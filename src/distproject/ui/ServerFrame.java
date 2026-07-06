@@ -57,7 +57,7 @@ public class ServerFrame extends JFrame {
         JScrollPane kitchenPane = new JScrollPane(kitchenArea);
         logPane.setBorder(BorderFactory.createTitledBorder("Server Log"));
         orderPane.setBorder(BorderFactory.createTitledBorder("Received Orders"));
-        kitchenPane.setBorder(BorderFactory.createTitledBorder("Kitchen Queue / FCFS Scheduling"));
+        kitchenPane.setBorder(BorderFactory.createTitledBorder("Kitchen Queue / Priority Scheduling"));
 
         JPanel centerPanel = new JPanel(new GridLayout(1, 3, 12, 12));
         centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
@@ -108,6 +108,7 @@ public class ServerFrame extends JFrame {
                 orderBuilder.append(order.toDisplayText()).append(System.lineSeparator());
                 kitchenBuilder.append(order.getOrderId())
                         .append(" | Table ").append(order.getTableNumber())
+                        .append(" | ").append(order.getOrderType())
                         .append(" | ").append(order.getStatus())
                         .append(" | Total RM ").append(String.format("%.2f", order.getTotal()))
                         .append(System.lineSeparator());

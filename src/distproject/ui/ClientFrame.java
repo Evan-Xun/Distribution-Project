@@ -8,6 +8,7 @@ import distproject.model.TableCart;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -28,6 +29,7 @@ public class ClientFrame extends JFrame {
     private final JTextField hostField = new JTextField("127.0.0.1");
     private final JTextField portField = new JTextField("5001");
     private final JTextField tableField = new JTextField("1");
+    private final JCheckBox takeawayCheckBox = new JCheckBox("Takeaway Priority");
     private final JTextArea cartArea = new JTextArea();
     private final JTextArea orderStatusArea = new JTextArea();
     private final JTextArea statusArea = new JTextArea();
@@ -62,7 +64,7 @@ public class ClientFrame extends JFrame {
         addButton.addActionListener(event -> addSelectedItem());
         submitButton.addActionListener(event -> submitOrder());
 
-        JPanel topPanel = new JPanel(new GridLayout(2, 4, 8, 8));
+        JPanel topPanel = new JPanel(new GridLayout(3, 4, 8, 8));
         topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         topPanel.add(new JLabel("Host"));
         topPanel.add(hostField);
@@ -72,6 +74,10 @@ public class ClientFrame extends JFrame {
         topPanel.add(tableField);
         topPanel.add(connectButton);
         topPanel.add(changeTableButton);
+        topPanel.add(new JLabel("Order Type"));
+        topPanel.add(takeawayCheckBox);
+        topPanel.add(new JLabel(""));
+        topPanel.add(new JLabel(""));
 
         JScrollPane menuPane = new JScrollPane(menuTable);
         menuPane.setBorder(BorderFactory.createTitledBorder("Menu"));
@@ -177,7 +183,7 @@ public class ClientFrame extends JFrame {
         }
 
         try {
-            clientApp.submitOrder(cart);
+            clientApp.submitOrder(cart, takeawayCheckBox.isSelected());
         } catch (IOException exception) {
             appendStatus("Submit failed: " + exception.getMessage());
         }
@@ -222,6 +228,7 @@ public class ClientFrame extends JFrame {
         SwingUtilities.invokeLater(() -> {
             orderStatusArea.append("Order " + order.getOrderId()
                     + " | Table " + order.getTableNumber()
+                    + " | " + order.getOrderType()
                     + " | " + order.getStatus()
                     + System.lineSeparator());
             appendStatus("Order " + order.getOrderId() + " status: " + order.getStatus());

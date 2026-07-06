@@ -7,16 +7,23 @@ import distproject.model.TableCart;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ServerContext {
+    private static final Comparator<Order> KITCHEN_ORDER_COMPARATOR = Comparator
+            .comparing(Order::isTakeaway)
+            .reversed()
+            .thenComparingLong(Order::getSequenceNumber);
+
     private final List<MenuItem> menuItems = new CopyOnWriteArrayList<>();
     private final List<Order> orders = new CopyOnWriteArrayList<>();
     private final List<ClientHandler> clients = new CopyOnWriteArrayList<>();
@@ -25,7 +32,8 @@ public class ServerContext {
     private final Map<Integer, ReentrantLock> tableLocks = new ConcurrentHashMap<>();
     private final ReentrantLock stockLock = new ReentrantLock();
     private final Set<Integer> submittingTables = ConcurrentHashMap.newKeySet();
-    private final LinkedBlockingQueue<Order> kitchenQueue = new LinkedBlockingQueue<>();
+    private final AtomicLong orderSequence = new AtomicLong();
+    private final PriorityBlockingQueue<Order> kitchenQueue = new PriorityBlockingQueue<>(11, KITCHEN_ORDER_COMPARATOR);
 
     public ServerContext() {
         menuItems.add(new MenuItem("M001", "Fried Rice", 8.50, 20));
@@ -60,7 +68,9 @@ public class ServerContext {
     }
 
     public List<Order> getKitchenQueueSnapshot() {
-        return Collections.unmodifiableList(new ArrayList<>(kitchenQueue));
+        List<Order> snapshot = new ArrayList<>(kitchenQueue);
+        snapshot.sort(KITCHEN_ORDER_COMPARATOR);
+        return Collections.unmodifiableList(snapshot);
     }
 
     public void addClient(ClientHandler clientHandler) {
@@ -173,7 +183,7 @@ public class ServerContext {
         return stockLock;
     }
 
-    public SubmitResult submitOrderAtomically(int tableNumber) {
+    public SubmitResult submitOrderAtomically(int tableNumber, boolean takeaway) {
         ReentrantLock tableLock = getTableLock(tableNumber);
         tableLock.lock();
         stockLock.lock();
@@ -202,7 +212,7 @@ public class ServerContext {
                 menuItem.setStock(menuItem.getStock() - orderItem.getQuantity());
             }
 
-            Order order = new Order(cart.getTableNumber(), cart.getItems());
+            Order order = new Order(cart.getTableNumber(), cart.getItems(), takeaway, orderSequence.incrementAndGet());
             orders.add(order);
             cart.clear();
             return SubmitResult.success(order, getMenuSnapshot(), cart.copy());

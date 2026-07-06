@@ -140,9 +140,10 @@ public class ClientHandler implements Runnable {
                 }
 
                 try {
+                    boolean takeaway = Boolean.TRUE.equals(message.getPayload());
                     log("Cart lock acquired for table " + currentTableNumber + " during submit");
                     log("Stock lock acquired for table " + currentTableNumber + " during submit");
-                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber);
+                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber, takeaway);
                     if (!result.isSuccess()) {
                         sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
                         return;
@@ -154,12 +155,14 @@ public class ClientHandler implements Runnable {
                     for (ClientHandler handler : context.getTableClients(currentTableNumber)) {
                         handler.sendMessage(new Message(
                                 MessageType.ORDER_RECEIVED,
-                                "Order " + order.getOrderId() + " submitted successfully and queued as PENDING",
+                                "Order " + order.getOrderId() + " submitted as " + order.getOrderType()
+                                        + " and queued as PENDING",
                                 order
                         ));
                     }
                     context.enqueueKitchenOrder(order);
-                    log("Order " + order.getOrderId() + " entered kitchen queue with PENDING status.");
+                    log("Order " + order.getOrderId() + " entered priority kitchen queue as "
+                            + order.getOrderType() + " with PENDING status.");
 
                     broadcastCartUpdate(currentTableNumber, result.getClearedCart());
                     broadcastMenuUpdate(result.getUpdatedMenu());

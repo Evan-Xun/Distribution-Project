@@ -60,6 +60,7 @@ public class PersistenceManager {
             builder.append("ORDER|")
                     .append(order.getOrderId()).append('|')
                     .append(order.getTableNumber()).append('|')
+                    .append(order.getOrderType()).append('|')
                     .append(order.getStatus()).append('|')
                     .append(order.getCreatedAt()).append('|')
                     .append(String.format("%.2f", order.getTotal()))

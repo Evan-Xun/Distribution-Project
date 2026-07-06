@@ -94,17 +94,17 @@ public class ServerApp {
     }
 
     private void startKitchenScheduler() {
-        schedulerThread = new Thread(this::runKitchenScheduler, "kitchen-fcfs-scheduler");
+        schedulerThread = new Thread(this::runKitchenScheduler, "kitchen-priority-scheduler");
         schedulerThread.setDaemon(true);
         schedulerThread.start();
-        log("Scheduling started: kitchen queue uses FCFS order processing.");
+        log("Scheduling started: takeaway orders have priority; same type uses FCFS.");
     }
 
     private void runKitchenScheduler() {
         while (running) {
             try {
                 Order order = context.takeNextKitchenOrder();
-                log("FCFS scheduler selected order " + order.getOrderId()
+                log("Priority scheduler selected " + order.getOrderType() + " order " + order.getOrderId()
                         + " from table " + order.getTableNumber());
 
                 updateOrderStatus(order, Order.STATUS_PREPARING);

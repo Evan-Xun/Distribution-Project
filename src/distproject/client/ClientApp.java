@@ -73,8 +73,8 @@ public class ClientApp {
         send(new Message(MessageType.ADD_TO_SHARED_CART, "Add item to shared cart", itemId));
     }
 
-    public void submitOrder(TableCart cart) throws IOException {
-        send(new Message(MessageType.SUBMIT_ORDER, "Submit order", cart));
+    public void submitOrder(TableCart cart, boolean takeaway) throws IOException {
+        send(new Message(MessageType.SUBMIT_ORDER, "Submit order", takeaway));
     }
 
     public void disconnect() {

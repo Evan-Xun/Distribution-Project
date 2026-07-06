@@ -57,14 +57,15 @@ This demonstrates multiple clients collaboratively placing one order.
 
 This demonstrates distributed consistency for shared menu stock.
 
-### 5. Kitchen order scheduling
+### 5. Kitchen order priority scheduling
 
 - Submitted orders enter a server-side kitchen order queue.
-- The kitchen scheduler processes orders using FCFS (First-Come, First-Served).
+- The kitchen scheduler gives takeaway orders higher priority than dine-in orders.
+- Orders with the same type are processed using FCFS (First-Come, First-Served).
 - Order status changes through `PENDING -> PREPARING -> READY -> COMPLETED`.
 - The server GUI displays the kitchen queue and live status changes.
 
-This demonstrates scheduling in a distributed small-business workflow.
+This demonstrates priority scheduling in a distributed small-business workflow.
 
 ### 6. Order status synchronization
 
@@ -122,7 +123,8 @@ The system currently demonstrates three locking-related mechanisms:
 ### Scheduling
 
 - The server uses a kitchen queue to schedule submitted orders.
-- Orders are processed in FCFS order, which is simple to explain and easy to demonstrate.
+- Takeaway orders are processed before dine-in orders to support delivery priority.
+- Orders with the same type still follow FCFS order, which keeps the scheduling result fair and easy to explain.
 - The scheduler runs in a background thread so client communication can continue concurrently.
 
 ### Replication
@@ -188,7 +190,7 @@ The system currently demonstrates three locking-related mechanisms:
    - stock is deducted
    - the updated menu is synchronized
    - duplicate submission is prevented
-7. Watch the server kitchen queue process the order using FCFS scheduling.
+7. Submit one dine-in order and one takeaway order, then watch the takeaway order receive priority in the kitchen queue.
 8. Show the client receiving `PENDING`, `PREPARING`, `READY`, and `COMPLETED` status updates.
 9. Open the runtime data folder and show that the main file and backup file are generated.
 10. Use the server restore action to demonstrate backup recovery.
@@ -204,7 +206,7 @@ The current version already demonstrates:
 - stock locking
 - duplicate submit prevention
 - stock consistency after order submission
-- FCFS kitchen order scheduling
+- takeaway-priority kitchen order scheduling
 - order status synchronization
 - main file persistence
 - backup file replication
