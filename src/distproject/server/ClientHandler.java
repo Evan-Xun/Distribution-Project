@@ -17,15 +17,18 @@ public class ClientHandler implements Runnable {
     private final Socket socket;
     private final ServerContext context;
     private final Consumer<String> logConsumer;
-    private final Consumer<Order> orderConsumer;
+    private final Runnable orderListPublisher;
+    private final Runnable persistencePublisher;
     private int currentTableNumber = -1;
     private ObjectOutputStream outputStream;
 
-    public ClientHandler(Socket socket, ServerContext context, Consumer<String> logConsumer, Consumer<Order> orderConsumer) {
+    public ClientHandler(Socket socket, ServerContext context, Consumer<String> logConsumer,
+                         Runnable orderListPublisher, Runnable persistencePublisher) {
         this.socket = socket;
         this.context = context;
         this.logConsumer = logConsumer;
-        this.orderConsumer = orderConsumer;
+        this.orderListPublisher = orderListPublisher;
+        this.persistencePublisher = persistencePublisher;
     }
 
     @Override
@@ -146,16 +149,17 @@ public class ClientHandler implements Runnable {
                     }
 
                     Order order = result.getOrder();
-                    orderConsumer.accept(order);
-                    log("Order received: " + order.getOrderId() + " from table " + order.getTableNumber());
-
+                    orderListPublisher.run();
+                    persistencePublisher.run();
                     for (ClientHandler handler : context.getTableClients(currentTableNumber)) {
                         handler.sendMessage(new Message(
                                 MessageType.ORDER_RECEIVED,
-                                "Order " + order.getOrderId() + " submitted successfully",
+                                "Order " + order.getOrderId() + " submitted successfully and queued as PENDING",
                                 order
                         ));
                     }
+                    context.enqueueKitchenOrder(order);
+                    log("Order " + order.getOrderId() + " entered kitchen queue with PENDING status.");
 
                     broadcastCartUpdate(currentTableNumber, result.getClearedCart());
                     broadcastMenuUpdate(result.getUpdatedMenu());

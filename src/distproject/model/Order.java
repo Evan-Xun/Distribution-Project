@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.UUID;
 
 public class Order implements Serializable {
+    public static final String STATUS_PENDING = "PENDING";
+    public static final String STATUS_PREPARING = "PREPARING";
+    public static final String STATUS_READY = "READY";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+
     private final String orderId;
     private final int tableNumber;
     private final List<OrderItem> items;
@@ -18,7 +23,7 @@ public class Order implements Serializable {
         this.orderId = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         this.tableNumber = tableNumber;
         this.items = new ArrayList<>(items);
-        this.status = "RECEIVED";
+        this.status = STATUS_PENDING;
         this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 

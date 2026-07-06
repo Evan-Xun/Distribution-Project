@@ -57,6 +57,32 @@ This demonstrates multiple clients collaboratively placing one order.
 
 This demonstrates distributed consistency for shared menu stock.
 
+### 5. Kitchen order scheduling
+
+- Submitted orders enter a server-side kitchen order queue.
+- The kitchen scheduler processes orders using FCFS (First-Come, First-Served).
+- Order status changes through `PENDING -> PREPARING -> READY -> COMPLETED`.
+- The server GUI displays the kitchen queue and live status changes.
+
+This demonstrates scheduling in a distributed small-business workflow.
+
+### 6. Order status synchronization
+
+- When the server changes an order status, clients at the same table receive an update.
+- Each client can see the latest order status in the client GUI.
+- Server logs show each scheduling and status update event.
+
+This demonstrates synchronization of distributed order state after submission.
+
+### 7. Main file persistence and backup replication
+
+- Orders and menu stock are saved to `data/main_state.txt`.
+- The main state file is copied to `data/backup_state.txt` after each important update.
+- The server log reports main file saving and backup replication events.
+- The server GUI includes a restore action that copies the backup file back to the main file.
+
+This demonstrates data persistence and a simple backup replication mechanism.
+
 ## Implemented Distributed Mechanisms
 
 ### Concurrency
@@ -92,6 +118,18 @@ The system currently demonstrates three locking-related mechanisms:
 - The system tracks tables that are currently submitting an order.
 - If two clients from the same table try to submit simultaneously, only one submission is accepted.
 - This prevents duplicate order creation.
+
+### Scheduling
+
+- The server uses a kitchen queue to schedule submitted orders.
+- Orders are processed in FCFS order, which is simple to explain and easy to demonstrate.
+- The scheduler runs in a background thread so client communication can continue concurrently.
+
+### Replication
+
+- The server writes order and stock state to a main file.
+- The server then replicates the same state to a backup file.
+- The backup file can be copied back to the main file from the server GUI.
 
 ## Validation Rules Already Implemented
 
@@ -150,6 +188,10 @@ The system currently demonstrates three locking-related mechanisms:
    - stock is deducted
    - the updated menu is synchronized
    - duplicate submission is prevented
+7. Watch the server kitchen queue process the order using FCFS scheduling.
+8. Show the client receiving `PENDING`, `PREPARING`, `READY`, and `COMPLETED` status updates.
+9. Open the runtime data folder and show that the main file and backup file are generated.
+10. Use the server restore action to demonstrate backup recovery.
 
 ## Current Scope
 
@@ -162,5 +204,9 @@ The current version already demonstrates:
 - stock locking
 - duplicate submit prevention
 - stock consistency after order submission
+- FCFS kitchen order scheduling
+- order status synchronization
+- main file persistence
+- backup file replication
 
-This provides a solid foundation for further extension such as scheduling, kitchen queue handling, persistence, backup replication, and final integration.
+This provides a solid foundation for the final report and presentation demo.

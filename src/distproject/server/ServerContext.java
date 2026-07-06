@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ServerContext {
@@ -24,6 +25,7 @@ public class ServerContext {
     private final Map<Integer, ReentrantLock> tableLocks = new ConcurrentHashMap<>();
     private final ReentrantLock stockLock = new ReentrantLock();
     private final Set<Integer> submittingTables = ConcurrentHashMap.newKeySet();
+    private final LinkedBlockingQueue<Order> kitchenQueue = new LinkedBlockingQueue<>();
 
     public ServerContext() {
         menuItems.add(new MenuItem("M001", "Fried Rice", 8.50, 20));
@@ -47,6 +49,18 @@ public class ServerContext {
 
     public List<Order> getOrdersSnapshot() {
         return Collections.unmodifiableList(new ArrayList<>(orders));
+    }
+
+    public void enqueueKitchenOrder(Order order) {
+        kitchenQueue.offer(order);
+    }
+
+    public Order takeNextKitchenOrder() throws InterruptedException {
+        return kitchenQueue.take();
+    }
+
+    public List<Order> getKitchenQueueSnapshot() {
+        return Collections.unmodifiableList(new ArrayList<>(kitchenQueue));
     }
 
     public void addClient(ClientHandler clientHandler) {

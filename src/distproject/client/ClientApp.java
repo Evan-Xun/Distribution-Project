@@ -128,6 +128,11 @@ public class ClientApp {
                 orderConsumer.accept(order);
                 status(message.getText());
             }
+            case ORDER_STATUS_UPDATED -> {
+                Order order = (Order) message.getPayload();
+                orderConsumer.accept(order);
+                status(message.getText());
+            }
             case ERROR -> {
                 status("Server error: " + message.getText());
                 if (errorConsumer != null) {

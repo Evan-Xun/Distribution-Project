@@ -29,6 +29,7 @@ public class ClientFrame extends JFrame {
     private final JTextField portField = new JTextField("5001");
     private final JTextField tableField = new JTextField("1");
     private final JTextArea cartArea = new JTextArea();
+    private final JTextArea orderStatusArea = new JTextArea();
     private final JTextArea statusArea = new JTextArea();
     private final DefaultTableModel menuTableModel = new DefaultTableModel(
             new String[]{"ID", "Name", "Price", "Stock"}, 0
@@ -79,13 +80,18 @@ public class ClientFrame extends JFrame {
         JScrollPane cartPane = new JScrollPane(cartArea);
         cartPane.setBorder(BorderFactory.createTitledBorder("Shared Cart"));
 
+        orderStatusArea.setEditable(false);
+        JScrollPane orderStatusPane = new JScrollPane(orderStatusArea);
+        orderStatusPane.setBorder(BorderFactory.createTitledBorder("Order Status Updates"));
+
         statusArea.setEditable(false);
         JScrollPane statusPane = new JScrollPane(statusArea);
         statusPane.setBorder(BorderFactory.createTitledBorder("Status"));
 
-        JPanel rightPanel = new JPanel(new BorderLayout(8, 8));
-        rightPanel.add(cartPane, BorderLayout.CENTER);
-        rightPanel.add(statusPane, BorderLayout.SOUTH);
+        JPanel rightPanel = new JPanel(new GridLayout(3, 1, 8, 8));
+        rightPanel.add(cartPane);
+        rightPanel.add(orderStatusPane);
+        rightPanel.add(statusPane);
 
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 12, 12));
         centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
@@ -214,7 +220,11 @@ public class ClientFrame extends JFrame {
 
     private void handleOrderReceived(Order order) {
         SwingUtilities.invokeLater(() -> {
-            appendStatus("Server accepted order " + order.getOrderId());
+            orderStatusArea.append("Order " + order.getOrderId()
+                    + " | Table " + order.getTableNumber()
+                    + " | " + order.getStatus()
+                    + System.lineSeparator());
+            appendStatus("Order " + order.getOrderId() + " status: " + order.getStatus());
         });
     }
 

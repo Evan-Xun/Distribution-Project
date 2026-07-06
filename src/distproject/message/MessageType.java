@@ -11,5 +11,6 @@ public enum MessageType implements Serializable {
     CART_UPDATED,
     SUBMIT_ORDER,
     ORDER_RECEIVED,
+    ORDER_STATUS_UPDATED,
     ERROR
 }
