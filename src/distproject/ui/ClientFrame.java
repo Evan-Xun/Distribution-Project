@@ -63,30 +63,38 @@ public class ClientFrame extends JFrame {
     }
 
     private void buildUi() {
+        getContentPane().setBackground(AppTheme.APP_BACKGROUND);
+        styleInputs();
+        AppTheme.styleTable(menuTable);
+
         JPanel topPanel = buildTopPanel();
 
         JScrollPane menuPane = new JScrollPane(menuTable);
-        menuPane.setBorder(BorderFactory.createTitledBorder("Menu"));
+        AppTheme.stylePane(menuPane, "Menu");
 
         cartArea.setEditable(false);
+        AppTheme.styleTextArea(cartArea, false);
         JScrollPane cartPane = new JScrollPane(cartArea);
-        cartPane.setBorder(BorderFactory.createTitledBorder(
-                mode == OrderMode.DINE_IN ? "Shared Cart" : "Your Cart"));
+        AppTheme.stylePane(cartPane, mode == OrderMode.DINE_IN ? "Shared Cart" : "Your Cart");
 
+        ordersPanel.setBackground(AppTheme.SURFACE_BACKGROUND);
         ordersPanel.setLayout(new BoxLayout(ordersPanel, BoxLayout.Y_AXIS));
         JScrollPane orderStatusPane = new JScrollPane(ordersPanel);
-        orderStatusPane.setBorder(BorderFactory.createTitledBorder("Order Status Updates"));
+        AppTheme.stylePane(orderStatusPane, "Order Status Updates");
 
         statusArea.setEditable(false);
+        AppTheme.styleTextArea(statusArea, false);
         JScrollPane statusPane = new JScrollPane(statusArea);
-        statusPane.setBorder(BorderFactory.createTitledBorder("Status"));
+        AppTheme.stylePane(statusPane, "Status");
 
         JPanel rightPanel = new JPanel(new GridLayout(3, 1, 8, 8));
+        rightPanel.setOpaque(false);
         rightPanel.add(cartPane);
         rightPanel.add(orderStatusPane);
         rightPanel.add(statusPane);
 
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 12, 12));
+        centerPanel.setOpaque(false);
         centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         centerPanel.add(menuPane);
         centerPanel.add(rightPanel);
@@ -101,14 +109,39 @@ public class ClientFrame extends JFrame {
         removeButton.addActionListener(event -> removeSelectedItem());
         submitButton.addActionListener(event -> submitOrder());
         checkoutButton.addActionListener(event -> checkout());
+        AppTheme.styleSecondaryButton(refreshButton);
+        refreshButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(AppTheme.BORDER_COLOR),
+                BorderFactory.createEmptyBorder(7, 6, 7, 6)));
+        AppTheme.styleSoftButton(addButton, AppTheme.SOFT_GREEN, AppTheme.COMPLETED_COLOR, new Color(0xC8, 0xDD, 0xCE));
+        AppTheme.styleSoftButton(removeButton, AppTheme.SOFT_RED, AppTheme.ERROR_COLOR, new Color(0xE4, 0xC9, 0xC9));
+        AppTheme.styleSoftButton(submitButton, AppTheme.SOFT_BLUE, AppTheme.READY_COLOR, new Color(0xC8, 0xD6, 0xEC));
+        AppTheme.styleSoftButton(checkoutButton, AppTheme.SOFT_ORANGE, AppTheme.PREPARING_COLOR, new Color(0xE6, 0xD4, 0xB8));
 
-        JPanel bottomPanel = new JPanel(new GridLayout(1, 5, 8, 8));
+        JPanel leftActions = new JPanel();
+        leftActions.setLayout(new BoxLayout(leftActions, BoxLayout.X_AXIS));
+        leftActions.setOpaque(false);
+        leftActions.add(refreshButton);
+        leftActions.add(Box.createHorizontalStrut(8));
+        leftActions.add(addButton);
+        leftActions.add(Box.createHorizontalStrut(8));
+        leftActions.add(removeButton);
+        leftActions.setMaximumSize(leftActions.getPreferredSize());
+
+        JPanel rightActions = new JPanel(new GridLayout(1, 2, 8, 0));
+        rightActions.setOpaque(false);
+        rightActions.add(submitButton);
+        rightActions.add(checkoutButton);
+        rightActions.setMaximumSize(rightActions.getPreferredSize());
+
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.X_AXIS));
+        bottomPanel.setOpaque(false);
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
-        bottomPanel.add(refreshButton);
-        bottomPanel.add(addButton);
-        bottomPanel.add(removeButton);
-        bottomPanel.add(submitButton);
-        bottomPanel.add(checkoutButton);
+        bottomPanel.add(leftActions);
+        bottomPanel.add(Box.createHorizontalGlue());
+        bottomPanel.add(Box.createHorizontalStrut(28));
+        bottomPanel.add(rightActions);
 
         setLayout(new BorderLayout());
         add(topPanel, BorderLayout.NORTH);
@@ -116,14 +149,22 @@ public class ClientFrame extends JFrame {
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
+    private void styleInputs() {
+        AppTheme.styleTextField(hostField);
+        AppTheme.styleTextField(portField);
+        AppTheme.styleTextField(tableField);
+    }
+
     private JPanel buildTopPanel() {
         JButton connectButton = new JButton("Connect");
         connectButton.addActionListener(event -> connect());
+        AppTheme.styleSoftButton(connectButton, AppTheme.SOFT_BLUE, AppTheme.TEXT_PRIMARY, new Color(0x9F, 0xB3, 0xC5));
 
         JPanel topPanel;
         if (mode == OrderMode.DINE_IN) {
             JButton changeTableButton = new JButton("Change Table");
             changeTableButton.addActionListener(event -> changeTable());
+            AppTheme.styleSecondaryButton(changeTableButton);
 
             topPanel = new JPanel(new GridLayout(2, 4, 8, 8));
             topPanel.add(new JLabel("Host"));
@@ -143,6 +184,7 @@ public class ClientFrame extends JFrame {
             topPanel.add(connectButton);
         }
 
+        topPanel.setOpaque(false);
         topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         return topPanel;
     }
@@ -248,17 +290,23 @@ public class ClientFrame extends JFrame {
         }
 
         double total = ordersById.values().stream().mapToDouble(Order::getTotal).sum();
-        String sourceLabel = cart.getTableNumber() < 0
-                ? "Takeaway " + Math.abs(cart.getTableNumber())
-                : "Table " + cart.getTableNumber();
-        JOptionPane.showMessageDialog(
+        String sourceLabel = sourceLabel();
+        int choice = JOptionPane.showConfirmDialog(
                 this,
                 sourceLabel + " checkout total: RM " + String.format("%.2f", total)
                         + System.lineSeparator()
-                        + "Submitted orders: " + ordersById.size(),
+                        + "Submitted orders: " + ordersById.size()
+                        + System.lineSeparator()
+                        + "Confirm checkout?",
                 "Checkout",
-                JOptionPane.INFORMATION_MESSAGE
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
         );
+        if (choice != JOptionPane.YES_OPTION) {
+            appendStatus(sourceLabel + " checkout cancelled.");
+            return;
+        }
+
         appendStatus(sourceLabel + " checkout total: RM " + String.format("%.2f", total));
         try {
             clientApp.checkout();
@@ -290,7 +338,7 @@ public class ClientFrame extends JFrame {
     private void refreshCartView() {
         SwingUtilities.invokeLater(() -> {
             StringBuilder builder = new StringBuilder();
-            builder.append(mode == OrderMode.DINE_IN ? "Table " + cart.getTableNumber() : "Takeaway Cart")
+            builder.append(sourceLabel())
                     .append(System.lineSeparator());
 
             for (OrderItem item : cart.getItems()) {
@@ -302,6 +350,17 @@ public class ClientFrame extends JFrame {
                     .append(String.format("%.2f", cart.getTotal()));
             cartArea.setText(builder.toString());
         });
+    }
+
+    private String sourceLabel() {
+        int tableNumber = cart.getTableNumber();
+        if (tableNumber < 0) {
+            return "Takeaway " + Math.abs(tableNumber);
+        }
+        if (mode == OrderMode.TAKEAWAY) {
+            return "Takeaway";
+        }
+        return "Table " + tableNumber;
     }
 
     private void handleOrderReceived(Order order) {
@@ -328,15 +387,18 @@ public class ClientFrame extends JFrame {
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+        card.setBackground(AppTheme.PANEL_BACKGROUND);
         card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(0xDD, 0xDD, 0xDD)),
-                BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+                BorderFactory.createLineBorder(AppTheme.BORDER_COLOR),
+                BorderFactory.createEmptyBorder(10, 12, 10, 12)));
 
         JPanel headerRow = new JPanel(new BorderLayout(8, 0));
+        headerRow.setOpaque(false);
         headerRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
         JLabel headerLabel = new JLabel(order.getOrderId() + " | " + order.getLocationLabel()
                 + " | RM " + String.format("%.2f", order.getTotal()));
         headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 13f));
+        headerLabel.setForeground(AppTheme.TEXT_PRIMARY);
         headerRow.add(headerLabel, BorderLayout.WEST);
 
         AppTheme.StatusChip aggregateChip = new AppTheme.StatusChip(
@@ -353,9 +415,12 @@ public class ClientFrame extends JFrame {
 
         for (OrderItem item : order.getItems()) {
             JPanel itemRow = new JPanel(new BorderLayout(8, 0));
+            itemRow.setOpaque(false);
             itemRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
             itemRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
-            itemRow.add(new JLabel(item.getItemName() + " x" + item.getQuantity()), BorderLayout.WEST);
+            JLabel itemLabel = new JLabel(item.getItemName() + " x" + item.getQuantity());
+            itemLabel.setForeground(AppTheme.TEXT_PRIMARY);
+            itemRow.add(itemLabel, BorderLayout.WEST);
             itemRow.add(new AppTheme.ItemProgress(item.getStatus()), BorderLayout.EAST);
             card.add(itemRow);
         }
@@ -383,11 +448,7 @@ public class ClientFrame extends JFrame {
     }
 
     private void handleCheckoutCompleted(String message) {
-        SwingUtilities.invokeLater(() -> {
-            ordersById.clear();
-            renderOrders();
-            appendStatus(message);
-        });
+        SwingUtilities.invokeLater(() -> appendStatus(message));
     }
 
     private void showErrorDialog(String message) {

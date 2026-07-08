@@ -17,6 +17,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.GridLayout;
 import java.util.List;
 
@@ -44,6 +45,11 @@ public class ServerFrame extends JFrame {
     }
 
     private void buildUi() {
+        getContentPane().setBackground(AppTheme.APP_BACKGROUND);
+        AppTheme.styleTextField(portField);
+        AppTheme.styleTable(queueTable);
+        AppTheme.styleTable(stationTable);
+
         JButton startButton = new JButton("Start Server");
         JButton stopButton = new JButton("Stop Server");
         JButton restoreButton = new JButton("Restore Backup File");
@@ -51,8 +57,12 @@ public class ServerFrame extends JFrame {
         startButton.addActionListener(event -> startServer());
         stopButton.addActionListener(event -> stopServer());
         restoreButton.addActionListener(event -> restoreBackupFile());
+        AppTheme.styleSoftButton(startButton, AppTheme.SOFT_GREEN, AppTheme.COMPLETED_COLOR, new Color(0xC8, 0xDD, 0xCE));
+        AppTheme.styleSoftButton(stopButton, AppTheme.SOFT_RED, AppTheme.ERROR_COLOR, new Color(0xE4, 0xC9, 0xC9));
+        AppTheme.styleSecondaryButton(restoreButton);
 
         JPanel topPanel = new JPanel(new GridLayout(1, 5, 8, 8));
+        topPanel.setOpaque(false);
         topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         topPanel.add(new JLabel("Port"));
         topPanel.add(portField);
@@ -62,24 +72,30 @@ public class ServerFrame extends JFrame {
 
         logArea.setEditable(false);
         orderArea.setEditable(false);
-        queueTable.setEnabled(false);
-        stationTable.setEnabled(false);
+        AppTheme.styleTextArea(logArea, true);
+        AppTheme.styleTextArea(orderArea, false);
+        queueTable.setFocusable(false);
+        stationTable.setFocusable(false);
+        queueTable.setRowSelectionAllowed(false);
+        stationTable.setRowSelectionAllowed(false);
 
         JScrollPane logPane = new JScrollPane(logArea);
         JScrollPane queuePane = new JScrollPane(queueTable);
         JScrollPane stationPane = new JScrollPane(stationTable);
         JScrollPane orderPane = new JScrollPane(orderArea);
-        logPane.setBorder(BorderFactory.createTitledBorder("Server Log"));
-        queuePane.setBorder(BorderFactory.createTitledBorder("Kitchen Queue - initial takeaway priority + dine-in aging"));
-        stationPane.setBorder(BorderFactory.createTitledBorder("Kitchen Stations"));
-        orderPane.setBorder(BorderFactory.createTitledBorder("Received Orders"));
+        AppTheme.stylePane(logPane, "Server Log");
+        AppTheme.stylePane(queuePane, "Kitchen Queue - initial takeaway priority + dine-in aging");
+        AppTheme.stylePane(stationPane, "Kitchen Stations");
+        AppTheme.stylePane(orderPane, "Received Orders");
 
         JPanel rightPanel = new JPanel(new GridLayout(3, 1, 8, 8));
+        rightPanel.setOpaque(false);
         rightPanel.add(queuePane);
         rightPanel.add(stationPane);
         rightPanel.add(orderPane);
 
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 12, 12));
+        centerPanel.setOpaque(false);
         centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         centerPanel.add(logPane);
         centerPanel.add(rightPanel);
