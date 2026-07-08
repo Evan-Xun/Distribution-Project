@@ -71,10 +71,18 @@ public class Order implements Serializable {
         return items.stream().mapToDouble(OrderItem::getSubtotal).sum();
     }
 
+    public boolean isAllItemsReady() {
+        return items.stream().allMatch(item -> OrderItem.STATUS_READY.equals(item.getStatus()));
+    }
+
+    public String getLocationLabel() {
+        return takeaway ? "Takeaway" : "Table " + tableNumber;
+    }
+
     public String toDisplayText() {
         StringBuilder builder = new StringBuilder();
         builder.append("Order ").append(orderId)
-                .append(" | Table ").append(tableNumber)
+                .append(" | ").append(getLocationLabel())
                 .append(" | ").append(getOrderType())
                 .append(" | ").append(status)
                 .append(" | ").append(createdAt)

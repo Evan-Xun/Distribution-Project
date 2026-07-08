@@ -1,6 +1,7 @@
 package distproject.server;
 
 import distproject.model.Order;
+import distproject.model.OrderItem;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -100,15 +101,18 @@ public class ServerApp {
         log("Scheduling started: takeaway orders have priority; same type uses FCFS.");
     }
 
+    private static final long TOTAL_PREPARING_MILLIS = 2500L;
+    private static final long MIN_ITEM_MILLIS = 400L;
+
     private void runKitchenScheduler() {
         while (running) {
             try {
                 Order order = context.takeNextKitchenOrder();
                 log("Priority scheduler selected " + order.getOrderType() + " order " + order.getOrderId()
-                        + " from table " + order.getTableNumber());
+                        + " from " + order.getLocationLabel());
 
                 updateOrderStatus(order, Order.STATUS_PREPARING);
-                pauseForDemo(2500);
+                simulateItemPreparation(order);
                 updateOrderStatus(order, Order.STATUS_READY);
                 pauseForDemo(1500);
                 updateOrderStatus(order, Order.STATUS_COMPLETED);
@@ -116,6 +120,23 @@ public class ServerApp {
                 Thread.currentThread().interrupt();
                 return;
             }
+        }
+    }
+
+    private void simulateItemPreparation(Order order) throws InterruptedException {
+        List<OrderItem> items = order.getItems();
+        long perItemMillis = Math.max(MIN_ITEM_MILLIS, TOTAL_PREPARING_MILLIS / Math.max(1, items.size()));
+
+        for (OrderItem item : items) {
+            item.setStatus(OrderItem.STATUS_PREPARING);
+            log("Item " + item.getItemName() + " in order " + order.getOrderId() + " -> PREPARING");
+            broadcastOrderStatus(order);
+
+            pauseForDemo(perItemMillis);
+
+            item.setStatus(OrderItem.STATUS_READY);
+            log("Item " + item.getItemName() + " in order " + order.getOrderId() + " -> READY");
+            broadcastOrderStatus(order);
         }
     }
 

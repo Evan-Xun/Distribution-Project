@@ -177,6 +177,53 @@ The system currently demonstrates three locking-related mechanisms:
 3. Run one or more `ClientLauncher` instances.
 4. Connect clients to the server using the default port `5001`.
 5. Use the same table number on multiple clients to test shared-cart synchronization.
+6. Run `SimulationLauncher` to open the simulation GUI for concurrency-conflict demos.
+
+## Simulation GUI
+
+The project includes a dedicated simulation panel for one-click concurrency demos.
+
+Available scenarios:
+
+- `Same-table add/remove`: multiple simulated customers on the same table add and remove the same item concurrently
+- `Same-table submit`: multiple simulated customers on the same table submit the same shared cart concurrently
+- `Cross-table stock conflict`: two different tables submit competing orders for the same item when the combined requested quantity exceeds stock
+
+These scenarios are designed to demonstrate:
+
+- table-level cart locking
+- duplicate submit prevention
+- global stock protection during atomic order submission
+
+## Concurrency Simulation Script
+
+To demonstrate concurrency and locking more clearly, the project also includes a command-line simulator:
+
+- Run `distproject.simulation.ConcurrentOrderingSimulation`
+- Or use the one-command helper script: `./run_simulation.sh`
+- Optional arguments: `host port tableNumber customerCount itemId scenario`
+- Scenario options: `both`, `add`, `submit`
+- Example: `127.0.0.1 5001 9 4 M004 both`
+
+Quick examples:
+
+- `./run_simulation.sh`
+- `./run_simulation.sh 127.0.0.1 5001 3 6 M001 add`
+- `./run_simulation.sh 127.0.0.1 5001 3 6 M001 submit`
+
+What it demonstrates:
+
+- multiple simulated customers join the same table and add the same item concurrently
+- the final shared cart quantity should match the total number of concurrent add requests
+- multiple simulated customers then submit the same table order concurrently
+- only one actual order should be created for the table, while other submissions are rejected or become invalid after the cart is cleared
+
+This gives a repeatable way to show:
+
+- multi-client concurrency
+- table-level cart locking
+- duplicate submit prevention
+- atomic order submission and stock protection
 
 ## Suggested Demo Flow
 

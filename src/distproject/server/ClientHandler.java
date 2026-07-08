@@ -19,7 +19,8 @@ public class ClientHandler implements Runnable {
     private final Consumer<String> logConsumer;
     private final Runnable orderListPublisher;
     private final Runnable persistencePublisher;
-    private int currentTableNumber = -1;
+    private int currentTableNumber;
+    private boolean tableAssigned;
     private ObjectOutputStream outputStream;
 
     public ClientHandler(Socket socket, ServerContext context, Consumer<String> logConsumer,
@@ -81,6 +82,7 @@ public class ClientHandler implements Runnable {
                 }
 
                 currentTableNumber = tableNumber;
+                tableAssigned = true;
                 context.registerTable(tableNumber, this);
                 log("Client assigned to table " + tableNumber
                         + " | clients at this table = " + context.getTableClientCount(tableNumber));
@@ -95,8 +97,24 @@ public class ClientHandler implements Runnable {
                         context.getTableCartSnapshot(tableNumber)
                 ));
             }
+            case REGISTER_TAKEAWAY -> {
+                int virtualId = context.registerTakeawayCustomer(this);
+                currentTableNumber = virtualId;
+                tableAssigned = true;
+                log("Client registered as takeaway customer (internal id " + virtualId + ")");
+                sendMessage(outputStream, new Message(
+                        MessageType.TABLE_ASSIGNED,
+                        "Takeaway order started",
+                        virtualId
+                ));
+                sendMessage(outputStream, new Message(
+                        MessageType.CART_UPDATED,
+                        "Takeaway cart synced",
+                        context.getTableCartSnapshot(virtualId)
+                ));
+            }
             case ADD_TO_SHARED_CART -> {
-                if (currentTableNumber <= 0) {
+                if (!tableAssigned) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
                     return;
                 }
@@ -124,9 +142,38 @@ public class ClientHandler implements Runnable {
                 log("Cart lock released for table " + currentTableNumber);
                 broadcastCartUpdate(currentTableNumber, updatedCart);
             }
+            case REMOVE_FROM_SHARED_CART -> {
+                if (!tableAssigned) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
+                    return;
+                }
+                if (!(message.getPayload() instanceof String itemId)) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Invalid menu item", null));
+                    return;
+                }
+
+                MenuItem menuItem = context.findMenuItemById(itemId);
+                if (menuItem == null) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Menu item not found", null));
+                    return;
+                }
+
+                log("Cart lock acquired for table " + currentTableNumber + " while removing " + menuItem.getName());
+                ServerContext.CartUpdateResult result = context.removeItemFromTableCart(currentTableNumber, itemId);
+                if (!result.isSuccess()) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
+                    log("Remove from cart rejected for table " + currentTableNumber + ": " + result.getErrorMessage());
+                    log("Cart lock released for table " + currentTableNumber);
+                    return;
+                }
+                TableCart updatedCart = result.getUpdatedCart();
+                log("Shared cart updated: table " + currentTableNumber + " removed one " + menuItem.getName());
+                log("Cart lock released for table " + currentTableNumber);
+                broadcastCartUpdate(currentTableNumber, updatedCart);
+            }
             case SUBMIT_ORDER -> {
                 log("Request received: SUBMIT_ORDER");
-                if (currentTableNumber <= 0) {
+                if (!tableAssigned) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
                     return;
                 }

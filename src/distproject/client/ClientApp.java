@@ -69,8 +69,16 @@ public class ClientApp {
         send(new Message(MessageType.REGISTER_TABLE, "Register table", tableNumber));
     }
 
+    public void registerTakeaway() throws IOException {
+        send(new Message(MessageType.REGISTER_TAKEAWAY, "Register takeaway", null));
+    }
+
     public void addToSharedCart(String itemId) throws IOException {
         send(new Message(MessageType.ADD_TO_SHARED_CART, "Add item to shared cart", itemId));
+    }
+
+    public void removeFromSharedCart(String itemId) throws IOException {
+        send(new Message(MessageType.REMOVE_FROM_SHARED_CART, "Remove item from shared cart", itemId));
     }
 
     public void submitOrder(TableCart cart, boolean takeaway) throws IOException {

@@ -7,8 +7,9 @@ import distproject.model.OrderItem;
 import distproject.model.TableCart;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -20,18 +21,26 @@ import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.GridLayout;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ClientFrame extends JFrame {
+    public enum OrderMode { DINE_IN, TAKEAWAY }
+
+    private final OrderMode mode;
+
     private final JTextField hostField = new JTextField("127.0.0.1");
     private final JTextField portField = new JTextField("5001");
     private final JTextField tableField = new JTextField("1");
-    private final JCheckBox takeawayCheckBox = new JCheckBox("Takeaway Priority");
     private final JTextArea cartArea = new JTextArea();
-    private final JTextArea orderStatusArea = new JTextArea();
+    private final JPanel ordersPanel = new JPanel();
     private final JTextArea statusArea = new JTextArea();
     private final DefaultTableModel menuTableModel = new DefaultTableModel(
             new String[]{"ID", "Name", "Price", "Stock"}, 0
@@ -40,11 +49,13 @@ public class ClientFrame extends JFrame {
 
     private final ClientApp clientApp = new ClientApp();
     private final List<MenuItem> currentMenu = new ArrayList<>();
+    private final Map<String, Order> ordersById = new LinkedHashMap<>();
     private TableCart cart = new TableCart(1);
     private boolean connected;
 
-    public ClientFrame() {
-        setTitle("Client GUI");
+    public ClientFrame(OrderMode mode) {
+        this.mode = mode;
+        setTitle(mode == OrderMode.DINE_IN ? "Client GUI - Dine In" : "Client GUI - Takeaway");
         setSize(950, 650);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -52,42 +63,18 @@ public class ClientFrame extends JFrame {
     }
 
     private void buildUi() {
-        JButton connectButton = new JButton("Connect");
-        JButton changeTableButton = new JButton("Change Table");
-        JButton refreshButton = new JButton("Refresh Menu");
-        JButton addButton = new JButton("Add Selected Item");
-        JButton submitButton = new JButton("Submit Order");
-
-        connectButton.addActionListener(event -> connect());
-        changeTableButton.addActionListener(event -> changeTable());
-        refreshButton.addActionListener(event -> requestMenu());
-        addButton.addActionListener(event -> addSelectedItem());
-        submitButton.addActionListener(event -> submitOrder());
-
-        JPanel topPanel = new JPanel(new GridLayout(3, 4, 8, 8));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        topPanel.add(new JLabel("Host"));
-        topPanel.add(hostField);
-        topPanel.add(new JLabel("Port"));
-        topPanel.add(portField);
-        topPanel.add(new JLabel("Table No."));
-        topPanel.add(tableField);
-        topPanel.add(connectButton);
-        topPanel.add(changeTableButton);
-        topPanel.add(new JLabel("Order Type"));
-        topPanel.add(takeawayCheckBox);
-        topPanel.add(new JLabel(""));
-        topPanel.add(new JLabel(""));
+        JPanel topPanel = buildTopPanel();
 
         JScrollPane menuPane = new JScrollPane(menuTable);
         menuPane.setBorder(BorderFactory.createTitledBorder("Menu"));
 
         cartArea.setEditable(false);
         JScrollPane cartPane = new JScrollPane(cartArea);
-        cartPane.setBorder(BorderFactory.createTitledBorder("Shared Cart"));
+        cartPane.setBorder(BorderFactory.createTitledBorder(
+                mode == OrderMode.DINE_IN ? "Shared Cart" : "Your Cart"));
 
-        orderStatusArea.setEditable(false);
-        JScrollPane orderStatusPane = new JScrollPane(orderStatusArea);
+        ordersPanel.setLayout(new BoxLayout(ordersPanel, BoxLayout.Y_AXIS));
+        JScrollPane orderStatusPane = new JScrollPane(ordersPanel);
         orderStatusPane.setBorder(BorderFactory.createTitledBorder("Order Status Updates"));
 
         statusArea.setEditable(false);
@@ -104,6 +91,13 @@ public class ClientFrame extends JFrame {
         centerPanel.add(menuPane);
         centerPanel.add(rightPanel);
 
+        JButton refreshButton = new JButton("Refresh Menu");
+        JButton addButton = new JButton("Add Selected Item");
+        JButton submitButton = new JButton("Submit Order");
+        refreshButton.addActionListener(event -> requestMenu());
+        addButton.addActionListener(event -> addSelectedItem());
+        submitButton.addActionListener(event -> submitOrder());
+
         JPanel bottomPanel = new JPanel(new GridLayout(1, 3, 8, 8));
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         bottomPanel.add(refreshButton);
@@ -116,12 +110,40 @@ public class ClientFrame extends JFrame {
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
+    private JPanel buildTopPanel() {
+        JButton connectButton = new JButton("Connect");
+        connectButton.addActionListener(event -> connect());
+
+        JPanel topPanel;
+        if (mode == OrderMode.DINE_IN) {
+            JButton changeTableButton = new JButton("Change Table");
+            changeTableButton.addActionListener(event -> changeTable());
+
+            topPanel = new JPanel(new GridLayout(2, 4, 8, 8));
+            topPanel.add(new JLabel("Host"));
+            topPanel.add(hostField);
+            topPanel.add(new JLabel("Port"));
+            topPanel.add(portField);
+            topPanel.add(new JLabel("Table No."));
+            topPanel.add(tableField);
+            topPanel.add(connectButton);
+            topPanel.add(changeTableButton);
+        } else {
+            topPanel = new JPanel(new GridLayout(1, 5, 8, 8));
+            topPanel.add(new JLabel("Host"));
+            topPanel.add(hostField);
+            topPanel.add(new JLabel("Port"));
+            topPanel.add(portField);
+            topPanel.add(connectButton);
+        }
+
+        topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        return topPanel;
+    }
+
     private void connect() {
         try {
             int port = Integer.parseInt(portField.getText().trim());
-            int tableNumber = Integer.parseInt(tableField.getText().trim());
-            cart = new TableCart(tableNumber);
-            refreshCartView();
             clientApp.connect(
                     hostField.getText().trim(),
                     port,
@@ -133,7 +155,15 @@ public class ClientFrame extends JFrame {
                     this::showErrorDialog
             );
             connected = true;
-            clientApp.registerTable(tableNumber);
+
+            if (mode == OrderMode.DINE_IN) {
+                int tableNumber = Integer.parseInt(tableField.getText().trim());
+                cart = new TableCart(tableNumber);
+                refreshCartView();
+                clientApp.registerTable(tableNumber);
+            } else {
+                clientApp.registerTakeaway();
+            }
         } catch (IOException exception) {
             appendStatus("Connect failed: " + exception.getMessage());
         }
@@ -183,7 +213,7 @@ public class ClientFrame extends JFrame {
         }
 
         try {
-            clientApp.submitOrder(cart, takeawayCheckBox.isSelected());
+            clientApp.submitOrder(cart, mode == OrderMode.TAKEAWAY);
         } catch (IOException exception) {
             appendStatus("Submit failed: " + exception.getMessage());
         }
@@ -211,7 +241,8 @@ public class ClientFrame extends JFrame {
     private void refreshCartView() {
         SwingUtilities.invokeLater(() -> {
             StringBuilder builder = new StringBuilder();
-            builder.append("Table ").append(cart.getTableNumber()).append(System.lineSeparator());
+            builder.append(mode == OrderMode.DINE_IN ? "Table " + cart.getTableNumber() : "Takeaway Cart")
+                    .append(System.lineSeparator());
 
             for (OrderItem item : cart.getItems()) {
                 builder.append("- ").append(item).append(System.lineSeparator());
@@ -226,18 +257,64 @@ public class ClientFrame extends JFrame {
 
     private void handleOrderReceived(Order order) {
         SwingUtilities.invokeLater(() -> {
-            orderStatusArea.append("Order " + order.getOrderId()
-                    + " | Table " + order.getTableNumber()
-                    + " | " + order.getOrderType()
-                    + " | " + order.getStatus()
-                    + System.lineSeparator());
+            ordersById.put(order.getOrderId(), order);
+            renderOrders();
             appendStatus("Order " + order.getOrderId() + " status: " + order.getStatus());
         });
     }
 
+    private void renderOrders() {
+        ordersPanel.removeAll();
+
+        for (Order order : ordersById.values()) {
+            ordersPanel.add(buildOrderCard(order));
+            ordersPanel.add(Box.createVerticalStrut(10));
+        }
+
+        ordersPanel.revalidate();
+        ordersPanel.repaint();
+    }
+
+    private JPanel buildOrderCard(Order order) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(0xDD, 0xDD, 0xDD)),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+
+        JPanel headerRow = new JPanel(new BorderLayout(8, 0));
+        headerRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+        JLabel headerLabel = new JLabel(order.getOrderId() + " | " + order.getLocationLabel());
+        headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 13f));
+        headerRow.add(headerLabel, BorderLayout.WEST);
+
+        boolean allReady = order.isAllItemsReady();
+        AppTheme.StatusChip aggregateChip = new AppTheme.StatusChip(
+                allReady ? "COMPLETED" : "IN PROGRESS",
+                allReady ? AppTheme.READY_COLOR : AppTheme.ACCENT_COLOR);
+        headerRow.add(aggregateChip, BorderLayout.EAST);
+        card.add(headerRow);
+        card.add(Box.createVerticalStrut(6));
+
+        for (OrderItem item : order.getItems()) {
+            JPanel itemRow = new JPanel(new BorderLayout(8, 0));
+            itemRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+            itemRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+            itemRow.add(new JLabel(item.getItemName() + " x" + item.getQuantity()), BorderLayout.WEST);
+            itemRow.add(new AppTheme.StatusChip(item.getStatus(), AppTheme.colorForStatus(item.getStatus())),
+                    BorderLayout.EAST);
+            card.add(itemRow);
+        }
+
+        return card;
+    }
+
     private void handleTableAssigned(Integer tableNumber) {
         SwingUtilities.invokeLater(() -> {
-            tableField.setText(String.valueOf(tableNumber));
+            if (mode == OrderMode.DINE_IN) {
+                tableField.setText(String.valueOf(tableNumber));
+            }
             cart = new TableCart(tableNumber);
             refreshCartView();
         });

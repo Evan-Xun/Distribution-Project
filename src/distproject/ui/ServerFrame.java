@@ -20,7 +20,6 @@ public class ServerFrame extends JFrame {
     private final JTextField portField = new JTextField("5001");
     private final JTextArea logArea = new JTextArea();
     private final JTextArea orderArea = new JTextArea();
-    private final JTextArea kitchenArea = new JTextArea();
     private ServerApp serverApp;
 
     public ServerFrame() {
@@ -50,20 +49,16 @@ public class ServerFrame extends JFrame {
 
         logArea.setEditable(false);
         orderArea.setEditable(false);
-        kitchenArea.setEditable(false);
 
         JScrollPane logPane = new JScrollPane(logArea);
         JScrollPane orderPane = new JScrollPane(orderArea);
-        JScrollPane kitchenPane = new JScrollPane(kitchenArea);
         logPane.setBorder(BorderFactory.createTitledBorder("Server Log"));
         orderPane.setBorder(BorderFactory.createTitledBorder("Received Orders"));
-        kitchenPane.setBorder(BorderFactory.createTitledBorder("Kitchen Queue / Priority Scheduling"));
 
-        JPanel centerPanel = new JPanel(new GridLayout(1, 3, 12, 12));
+        JPanel centerPanel = new JPanel(new GridLayout(1, 2, 12, 12));
         centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         centerPanel.add(logPane);
         centerPanel.add(orderPane);
-        centerPanel.add(kitchenPane);
 
         setLayout(new BorderLayout());
         add(topPanel, BorderLayout.NORTH);
@@ -102,20 +97,12 @@ public class ServerFrame extends JFrame {
     private void refreshOrders(List<Order> orders) {
         SwingUtilities.invokeLater(() -> {
             StringBuilder orderBuilder = new StringBuilder();
-            StringBuilder kitchenBuilder = new StringBuilder();
 
             for (Order order : orders) {
                 orderBuilder.append(order.toDisplayText()).append(System.lineSeparator());
-                kitchenBuilder.append(order.getOrderId())
-                        .append(" | Table ").append(order.getTableNumber())
-                        .append(" | ").append(order.getOrderType())
-                        .append(" | ").append(order.getStatus())
-                        .append(" | Total RM ").append(String.format("%.2f", order.getTotal()))
-                        .append(System.lineSeparator());
             }
 
             orderArea.setText(orderBuilder.toString());
-            kitchenArea.setText(kitchenBuilder.toString());
         });
     }
 }

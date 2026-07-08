@@ -31,6 +31,22 @@ public class TableCart implements Serializable {
         items.add(new OrderItem(menuItem.getId(), menuItem.getName(), menuItem.getPrice(), 1));
     }
 
+    public boolean removeOneItem(String itemId) {
+        for (int index = 0; index < items.size(); index++) {
+            OrderItem item = items.get(index);
+            if (!item.getItemId().equals(itemId)) {
+                continue;
+            }
+            if (item.getQuantity() <= 1) {
+                items.remove(index);
+            } else {
+                item.incrementQuantity(-1);
+            }
+            return true;
+        }
+        return false;
+    }
+
     public int getQuantityForItem(String itemId) {
         for (OrderItem item : items) {
             if (item.getItemId().equals(itemId)) {

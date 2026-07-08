@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -34,6 +35,7 @@ public class ServerContext {
     private final Set<Integer> submittingTables = ConcurrentHashMap.newKeySet();
     private final AtomicLong orderSequence = new AtomicLong();
     private final PriorityBlockingQueue<Order> kitchenQueue = new PriorityBlockingQueue<>(11, KITCHEN_ORDER_COMPARATOR);
+    private final AtomicInteger takeawayIdGenerator = new AtomicInteger(-1);
 
     public ServerContext() {
         menuItems.add(new MenuItem("M001", "Fried Rice", 8.50, 20));
@@ -93,6 +95,12 @@ public class ServerContext {
         tableLocks.computeIfAbsent(tableNumber, ignored -> new ReentrantLock());
     }
 
+    public int registerTakeawayCustomer(ClientHandler clientHandler) {
+        int virtualId = takeawayIdGenerator.getAndDecrement();
+        registerTable(virtualId, clientHandler);
+        return virtualId;
+    }
+
     public void unregisterTable(ClientHandler clientHandler) {
         for (Set<ClientHandler> handlers : tableClients.values()) {
             handlers.remove(clientHandler);
@@ -116,6 +124,20 @@ public class ServerContext {
                 return CartUpdateResult.error("Cannot add more " + menuItem.getName() + ". Stock is insufficient.");
             }
             cart.addItem(menuItem);
+            return CartUpdateResult.success(cart.copy());
+        } finally {
+            tableLock.unlock();
+        }
+    }
+
+    public CartUpdateResult removeItemFromTableCart(int tableNumber, String itemId) {
+        ReentrantLock tableLock = getTableLock(tableNumber);
+        tableLock.lock();
+        try {
+            TableCart cart = tableCarts.computeIfAbsent(tableNumber, TableCart::new);
+            if (!cart.removeOneItem(itemId)) {
+                return CartUpdateResult.error("Item not found in shared cart");
+            }
             return CartUpdateResult.success(cart.copy());
         } finally {
             tableLock.unlock();

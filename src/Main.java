@@ -1,3 +1,5 @@
+import distproject.ui.AppTheme;
+
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -10,6 +12,8 @@ import java.awt.GridLayout;
 public class Main {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
+            AppTheme.applyTheme();
+
             JFrame frame = new JFrame("Distribution Project Launcher");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setSize(420, 180);
@@ -23,9 +27,13 @@ public class Main {
             JButton clientButton = new JButton("Open Client");
             clientButton.addActionListener(event -> ClientLauncher.main(new String[0]));
 
-            JPanel buttonPanel = new JPanel(new GridLayout(1, 2, 12, 0));
+            JButton simulationButton = new JButton("Open Simulation");
+            simulationButton.addActionListener(event -> SimulationLauncher.main(new String[0]));
+
+            JPanel buttonPanel = new JPanel(new GridLayout(1, 3, 12, 0));
             buttonPanel.add(serverButton);
             buttonPanel.add(clientButton);
+            buttonPanel.add(simulationButton);
 
             frame.setLayout(new BorderLayout(12, 12));
             frame.add(label, BorderLayout.CENTER);
