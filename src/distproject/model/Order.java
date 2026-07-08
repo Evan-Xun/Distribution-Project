@@ -8,9 +8,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class Order implements Serializable {
-    public static final String STATUS_PENDING = "PENDING";
-    public static final String STATUS_PREPARING = "PREPARING";
-    public static final String STATUS_READY = "READY";
+    public static final String STATUS_PROCESSING = "PROCESSING";
     public static final String STATUS_COMPLETED = "COMPLETED";
 
     private final String orderId;
@@ -18,6 +16,7 @@ public class Order implements Serializable {
     private final List<OrderItem> items;
     private final boolean takeaway;
     private final long sequenceNumber;
+    private final long queuedAtMillis;
     private String status;
     private final String createdAt;
 
@@ -27,7 +26,8 @@ public class Order implements Serializable {
         this.items = new ArrayList<>(items);
         this.takeaway = takeaway;
         this.sequenceNumber = sequenceNumber;
-        this.status = STATUS_PENDING;
+        this.queuedAtMillis = System.currentTimeMillis();
+        this.status = STATUS_PROCESSING;
         this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
@@ -55,6 +55,10 @@ public class Order implements Serializable {
         return sequenceNumber;
     }
 
+    public long getQueuedAtMillis() {
+        return queuedAtMillis;
+    }
+
     public String getStatus() {
         return status;
     }
@@ -71,12 +75,16 @@ public class Order implements Serializable {
         return items.stream().mapToDouble(OrderItem::getSubtotal).sum();
     }
 
-    public boolean isAllItemsReady() {
-        return items.stream().allMatch(item -> OrderItem.STATUS_READY.equals(item.getStatus()));
+    public boolean isAllItemsCompleted() {
+        return items.stream().allMatch(item -> OrderItem.STATUS_COMPLETED.equals(item.getStatus()));
     }
 
     public String getLocationLabel() {
-        return takeaway ? "Takeaway" : "Table " + tableNumber;
+        return getSourceLabel();
+    }
+
+    public String getSourceLabel() {
+        return takeaway ? "Takeaway " + Math.abs(tableNumber) : "Table " + tableNumber;
     }
 
     public String toDisplayText() {
@@ -89,7 +97,9 @@ public class Order implements Serializable {
                 .append(System.lineSeparator());
 
         for (OrderItem item : items) {
-            builder.append("  - ").append(item).append(System.lineSeparator());
+            builder.append("  - ").append(item)
+                    .append(" | ").append(item.getStatus())
+                    .append(System.lineSeparator());
         }
 
         builder.append("  Total: RM ").append(String.format("%.2f", getTotal()))

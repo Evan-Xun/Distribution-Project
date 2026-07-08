@@ -96,6 +96,7 @@ public class ClientHandler implements Runnable {
                         "Shared cart synced for table " + tableNumber,
                         context.getTableCartSnapshot(tableNumber)
                 ));
+                sendExistingOrdersForCurrentTable();
             }
             case REGISTER_TAKEAWAY -> {
                 int virtualId = context.registerTakeawayCustomer(this);
@@ -112,6 +113,7 @@ public class ClientHandler implements Runnable {
                         "Takeaway cart synced",
                         context.getTableCartSnapshot(virtualId)
                 ));
+                sendExistingOrdersForCurrentTable();
             }
             case ADD_TO_SHARED_CART -> {
                 if (!tableAssigned) {
@@ -203,13 +205,13 @@ public class ClientHandler implements Runnable {
                         handler.sendMessage(new Message(
                                 MessageType.ORDER_RECEIVED,
                                 "Order " + order.getOrderId() + " submitted as " + order.getOrderType()
-                                        + " and queued as PENDING",
+                                        + " and queued as PROCESSING",
                                 order
                         ));
                     }
                     context.enqueueKitchenOrder(order);
                     log("Order " + order.getOrderId() + " entered priority kitchen queue as "
-                            + order.getOrderType() + " with PENDING status.");
+                            + order.getOrderType() + " with PROCESSING status.");
 
                     broadcastCartUpdate(currentTableNumber, result.getClearedCart());
                     broadcastMenuUpdate(result.getUpdatedMenu());
@@ -218,6 +220,28 @@ public class ClientHandler implements Runnable {
                     log("Cart lock released for table " + currentTableNumber);
                     context.endSubmit(currentTableNumber);
                 }
+            }
+            case CHECKOUT_REQUEST -> {
+                log("Request received: CHECKOUT_REQUEST");
+                if (!tableAssigned) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
+                    return;
+                }
+
+                context.checkoutTable(currentTableNumber);
+                log("Checkout completed for table " + currentTableNumber + "; future clients will start with no prior orders.");
+                for (ClientHandler handler : context.getTableClients(currentTableNumber)) {
+                    try {
+                        handler.sendMessage(new Message(
+                                MessageType.CHECKOUT_COMPLETED,
+                                "Checkout completed. Order records cleared for this table.",
+                                currentTableNumber
+                        ));
+                    } catch (IOException exception) {
+                        log("Failed to sync checkout for table " + currentTableNumber + ": " + exception.getMessage());
+                    }
+                }
+                broadcastCartUpdate(currentTableNumber, context.getTableCartSnapshot(currentTableNumber));
             }
             default -> sendMessage(outputStream, new Message(MessageType.ERROR, "Unsupported message type", null));
         }
@@ -260,6 +284,20 @@ public class ClientHandler implements Runnable {
                 ));
             } catch (IOException exception) {
                 log("Failed to sync menu: " + exception.getMessage());
+            }
+        }
+    }
+
+    private void sendExistingOrdersForCurrentTable() {
+        for (Order order : context.getOrdersForTableSnapshot(currentTableNumber)) {
+            try {
+                sendMessage(new Message(
+                        MessageType.ORDER_RECEIVED,
+                        "Existing order " + order.getOrderId() + " synced for checkout total",
+                        order
+                ));
+            } catch (IOException exception) {
+                log("Failed to sync existing order " + order.getOrderId() + ": " + exception.getMessage());
             }
         }
     }

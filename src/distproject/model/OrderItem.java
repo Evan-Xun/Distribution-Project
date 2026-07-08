@@ -6,6 +6,7 @@ public class OrderItem implements Serializable {
     public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_PREPARING = "PREPARING";
     public static final String STATUS_READY = "READY";
+    public static final String STATUS_COMPLETED = "COMPLETED";
 
     private final String itemId;
     private final String itemName;

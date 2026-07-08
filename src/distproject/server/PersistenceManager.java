@@ -71,6 +71,7 @@ public class PersistenceManager {
                         .append(item.getItemId()).append('|')
                         .append(item.getItemName()).append('|')
                         .append(item.getQuantity()).append('|')
+                        .append(item.getStatus()).append('|')
                         .append(String.format("%.2f", item.getUnitPrice())).append('|')
                         .append(String.format("%.2f", item.getSubtotal()))
                         .append(System.lineSeparator());

@@ -93,16 +93,22 @@ public class ClientFrame extends JFrame {
 
         JButton refreshButton = new JButton("Refresh Menu");
         JButton addButton = new JButton("Add Selected Item");
+        JButton removeButton = new JButton("Remove Selected Item");
         JButton submitButton = new JButton("Submit Order");
+        JButton checkoutButton = new JButton("Checkout");
         refreshButton.addActionListener(event -> requestMenu());
         addButton.addActionListener(event -> addSelectedItem());
+        removeButton.addActionListener(event -> removeSelectedItem());
         submitButton.addActionListener(event -> submitOrder());
+        checkoutButton.addActionListener(event -> checkout());
 
-        JPanel bottomPanel = new JPanel(new GridLayout(1, 3, 8, 8));
+        JPanel bottomPanel = new JPanel(new GridLayout(1, 5, 8, 8));
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         bottomPanel.add(refreshButton);
         bottomPanel.add(addButton);
+        bottomPanel.add(removeButton);
         bottomPanel.add(submitButton);
+        bottomPanel.add(checkoutButton);
 
         setLayout(new BorderLayout());
         add(topPanel, BorderLayout.NORTH);
@@ -126,8 +132,8 @@ public class ClientFrame extends JFrame {
             topPanel.add(portField);
             topPanel.add(new JLabel("Table No."));
             topPanel.add(tableField);
-            topPanel.add(connectButton);
             topPanel.add(changeTableButton);
+            topPanel.add(connectButton);
         } else {
             topPanel = new JPanel(new GridLayout(1, 5, 8, 8));
             topPanel.add(new JLabel("Host"));
@@ -152,7 +158,8 @@ public class ClientFrame extends JFrame {
                     this::handleOrderReceived,
                     this::handleTableAssigned,
                     this::handleCartUpdated,
-                    this::showErrorDialog
+                    this::showErrorDialog,
+                    this::handleCheckoutCompleted
             );
             connected = true;
 
@@ -206,6 +213,21 @@ public class ClientFrame extends JFrame {
         }
     }
 
+    private void removeSelectedItem() {
+        int selectedRow = menuTable.getSelectedRow();
+        if (selectedRow < 0 || selectedRow >= currentMenu.size()) {
+            JOptionPane.showMessageDialog(this, "Please select a menu item first.");
+            return;
+        }
+
+        MenuItem menuItem = currentMenu.get(selectedRow);
+        try {
+            clientApp.removeFromSharedCart(menuItem.getId());
+        } catch (IOException exception) {
+            appendStatus("Failed to remove item: " + exception.getMessage());
+        }
+    }
+
     private void submitOrder() {
         if (cart.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Cart is empty.");
@@ -218,6 +240,33 @@ public class ClientFrame extends JFrame {
             appendStatus("Submit failed: " + exception.getMessage());
         }
     }
+
+    private void checkout() {
+        if (ordersById.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No submitted orders to checkout yet.");
+            return;
+        }
+
+        double total = ordersById.values().stream().mapToDouble(Order::getTotal).sum();
+        String sourceLabel = cart.getTableNumber() < 0
+                ? "Takeaway " + Math.abs(cart.getTableNumber())
+                : "Table " + cart.getTableNumber();
+        JOptionPane.showMessageDialog(
+                this,
+                sourceLabel + " checkout total: RM " + String.format("%.2f", total)
+                        + System.lineSeparator()
+                        + "Submitted orders: " + ordersById.size(),
+                "Checkout",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+        appendStatus(sourceLabel + " checkout total: RM " + String.format("%.2f", total));
+        try {
+            clientApp.checkout();
+        } catch (IOException exception) {
+            appendStatus("Checkout failed: " + exception.getMessage());
+        }
+    }
+
 
     private void updateMenu(List<MenuItem> menuItems) {
         SwingUtilities.invokeLater(() -> {
@@ -285,25 +334,29 @@ public class ClientFrame extends JFrame {
 
         JPanel headerRow = new JPanel(new BorderLayout(8, 0));
         headerRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
-        JLabel headerLabel = new JLabel(order.getOrderId() + " | " + order.getLocationLabel());
+        JLabel headerLabel = new JLabel(order.getOrderId() + " | " + order.getLocationLabel()
+                + " | RM " + String.format("%.2f", order.getTotal()));
         headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 13f));
         headerRow.add(headerLabel, BorderLayout.WEST);
 
-        boolean allReady = order.isAllItemsReady();
         AppTheme.StatusChip aggregateChip = new AppTheme.StatusChip(
-                allReady ? "COMPLETED" : "IN PROGRESS",
-                allReady ? AppTheme.READY_COLOR : AppTheme.ACCENT_COLOR);
-        headerRow.add(aggregateChip, BorderLayout.EAST);
+                order.getStatus(),
+                AppTheme.colorForStatus(order.getStatus()));
+        JPanel chipHolder = new JPanel(new BorderLayout());
+        chipHolder.setOpaque(false);
+        chipHolder.setPreferredSize(new Dimension(104, 30));
+        chipHolder.setMaximumSize(new Dimension(104, 30));
+        chipHolder.add(aggregateChip, BorderLayout.CENTER);
+        headerRow.add(chipHolder, BorderLayout.EAST);
         card.add(headerRow);
         card.add(Box.createVerticalStrut(6));
 
         for (OrderItem item : order.getItems()) {
             JPanel itemRow = new JPanel(new BorderLayout(8, 0));
             itemRow.setAlignmentX(JPanel.LEFT_ALIGNMENT);
-            itemRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+            itemRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
             itemRow.add(new JLabel(item.getItemName() + " x" + item.getQuantity()), BorderLayout.WEST);
-            itemRow.add(new AppTheme.StatusChip(item.getStatus(), AppTheme.colorForStatus(item.getStatus())),
-                    BorderLayout.EAST);
+            itemRow.add(new AppTheme.ItemProgress(item.getStatus()), BorderLayout.EAST);
             card.add(itemRow);
         }
 
@@ -315,8 +368,10 @@ public class ClientFrame extends JFrame {
             if (mode == OrderMode.DINE_IN) {
                 tableField.setText(String.valueOf(tableNumber));
             }
+            ordersById.clear();
             cart = new TableCart(tableNumber);
             refreshCartView();
+            renderOrders();
         });
     }
 
@@ -324,6 +379,14 @@ public class ClientFrame extends JFrame {
         SwingUtilities.invokeLater(() -> {
             cart = updatedCart;
             refreshCartView();
+        });
+    }
+
+    private void handleCheckoutCompleted(String message) {
+        SwingUtilities.invokeLater(() -> {
+            ordersById.clear();
+            renderOrders();
+            appendStatus(message);
         });
     }
 
