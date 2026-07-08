@@ -33,12 +33,16 @@ public class Main {
             JButton simulationButton = new JButton("Open Simulation");
             simulationButton.addActionListener(event -> SimulationLauncher.main(new String[0]));
 
-            JPanel buttonPanel = new JPanel(new GridLayout(1, 3, 10, 0));
+            JButton replicaButton = new JButton("Open Replica");
+            replicaButton.addActionListener(event -> ReplicaServerLauncher.main(new String[0]));
+
+            JPanel buttonPanel = new JPanel(new GridLayout(1, 4, 10, 0));
             buttonPanel.setOpaque(false);
             buttonPanel.setBorder(BorderFactory.createEmptyBorder(0, 24, 24, 24));
             buttonPanel.add(serverButton);
             buttonPanel.add(clientButton);
             buttonPanel.add(simulationButton);
+            buttonPanel.add(replicaButton);
 
             JPanel contentPanel = new JPanel(new BorderLayout(12, 12));
             contentPanel.setBackground(AppTheme.APP_BACKGROUND);
