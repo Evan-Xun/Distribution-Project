@@ -28,5 +28,8 @@ bin/
 ### VS Code ###
 .vscode/
 
+### Runtime data ###
+data/*.txt
+
 ### Mac OS ###
 .DS_Store

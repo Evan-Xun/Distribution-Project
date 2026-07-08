@@ -17,15 +17,19 @@ public class ClientHandler implements Runnable {
     private final Socket socket;
     private final ServerContext context;
     private final Consumer<String> logConsumer;
-    private final Consumer<Order> orderConsumer;
-    private int currentTableNumber = -1;
+    private final Runnable orderListPublisher;
+    private final Runnable persistencePublisher;
+    private int currentTableNumber;
+    private boolean tableAssigned;
     private ObjectOutputStream outputStream;
 
-    public ClientHandler(Socket socket, ServerContext context, Consumer<String> logConsumer, Consumer<Order> orderConsumer) {
+    public ClientHandler(Socket socket, ServerContext context, Consumer<String> logConsumer,
+                         Runnable orderListPublisher, Runnable persistencePublisher) {
         this.socket = socket;
         this.context = context;
         this.logConsumer = logConsumer;
-        this.orderConsumer = orderConsumer;
+        this.orderListPublisher = orderListPublisher;
+        this.persistencePublisher = persistencePublisher;
     }
 
     @Override
@@ -78,6 +82,7 @@ public class ClientHandler implements Runnable {
                 }
 
                 currentTableNumber = tableNumber;
+                tableAssigned = true;
                 context.registerTable(tableNumber, this);
                 log("Client assigned to table " + tableNumber
                         + " | clients at this table = " + context.getTableClientCount(tableNumber));
@@ -91,9 +96,27 @@ public class ClientHandler implements Runnable {
                         "Shared cart synced for table " + tableNumber,
                         context.getTableCartSnapshot(tableNumber)
                 ));
+                sendExistingOrdersForCurrentTable();
+            }
+            case REGISTER_TAKEAWAY -> {
+                int virtualId = context.registerTakeawayCustomer(this);
+                currentTableNumber = virtualId;
+                tableAssigned = true;
+                log("Client registered as takeaway customer (internal id " + virtualId + ")");
+                sendMessage(outputStream, new Message(
+                        MessageType.TABLE_ASSIGNED,
+                        "Takeaway order started",
+                        virtualId
+                ));
+                sendMessage(outputStream, new Message(
+                        MessageType.CART_UPDATED,
+                        "Takeaway cart synced",
+                        context.getTableCartSnapshot(virtualId)
+                ));
+                sendExistingOrdersForCurrentTable();
             }
             case ADD_TO_SHARED_CART -> {
-                if (currentTableNumber <= 0) {
+                if (!tableAssigned) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
                     return;
                 }
@@ -121,9 +144,38 @@ public class ClientHandler implements Runnable {
                 log("Cart lock released for table " + currentTableNumber);
                 broadcastCartUpdate(currentTableNumber, updatedCart);
             }
+            case REMOVE_FROM_SHARED_CART -> {
+                if (!tableAssigned) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
+                    return;
+                }
+                if (!(message.getPayload() instanceof String itemId)) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Invalid menu item", null));
+                    return;
+                }
+
+                MenuItem menuItem = context.findMenuItemById(itemId);
+                if (menuItem == null) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Menu item not found", null));
+                    return;
+                }
+
+                log("Cart lock acquired for table " + currentTableNumber + " while removing " + menuItem.getName());
+                ServerContext.CartUpdateResult result = context.removeItemFromTableCart(currentTableNumber, itemId);
+                if (!result.isSuccess()) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
+                    log("Remove from cart rejected for table " + currentTableNumber + ": " + result.getErrorMessage());
+                    log("Cart lock released for table " + currentTableNumber);
+                    return;
+                }
+                TableCart updatedCart = result.getUpdatedCart();
+                log("Shared cart updated: table " + currentTableNumber + " removed one " + menuItem.getName());
+                log("Cart lock released for table " + currentTableNumber);
+                broadcastCartUpdate(currentTableNumber, updatedCart);
+            }
             case SUBMIT_ORDER -> {
                 log("Request received: SUBMIT_ORDER");
-                if (currentTableNumber <= 0) {
+                if (!tableAssigned) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
                     return;
                 }
@@ -137,25 +189,29 @@ public class ClientHandler implements Runnable {
                 }
 
                 try {
+                    boolean takeaway = Boolean.TRUE.equals(message.getPayload());
                     log("Cart lock acquired for table " + currentTableNumber + " during submit");
                     log("Stock lock acquired for table " + currentTableNumber + " during submit");
-                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber);
+                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber, takeaway);
                     if (!result.isSuccess()) {
                         sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
                         return;
                     }
 
                     Order order = result.getOrder();
-                    orderConsumer.accept(order);
-                    log("Order received: " + order.getOrderId() + " from table " + order.getTableNumber());
-
+                    orderListPublisher.run();
+                    persistencePublisher.run();
                     for (ClientHandler handler : context.getTableClients(currentTableNumber)) {
                         handler.sendMessage(new Message(
                                 MessageType.ORDER_RECEIVED,
-                                "Order " + order.getOrderId() + " submitted successfully",
+                                "Order " + order.getOrderId() + " submitted as " + order.getOrderType()
+                                        + " and queued as PROCESSING",
                                 order
                         ));
                     }
+                    context.enqueueKitchenOrder(order);
+                    log("Order " + order.getOrderId() + " entered priority kitchen queue as "
+                            + order.getOrderType() + " with PROCESSING status.");
 
                     broadcastCartUpdate(currentTableNumber, result.getClearedCart());
                     broadcastMenuUpdate(result.getUpdatedMenu());
@@ -164,6 +220,28 @@ public class ClientHandler implements Runnable {
                     log("Cart lock released for table " + currentTableNumber);
                     context.endSubmit(currentTableNumber);
                 }
+            }
+            case CHECKOUT_REQUEST -> {
+                log("Request received: CHECKOUT_REQUEST");
+                if (!tableAssigned) {
+                    sendMessage(outputStream, new Message(MessageType.ERROR, "Please join a table first", null));
+                    return;
+                }
+
+                context.checkoutTable(currentTableNumber);
+                log("Checkout completed for table " + currentTableNumber + "; future clients will start with no prior orders.");
+                for (ClientHandler handler : context.getTableClients(currentTableNumber)) {
+                    try {
+                        handler.sendMessage(new Message(
+                                MessageType.CHECKOUT_COMPLETED,
+                                "Checkout completed. Order records cleared for this table.",
+                                currentTableNumber
+                        ));
+                    } catch (IOException exception) {
+                        log("Failed to sync checkout for table " + currentTableNumber + ": " + exception.getMessage());
+                    }
+                }
+                broadcastCartUpdate(currentTableNumber, context.getTableCartSnapshot(currentTableNumber));
             }
             default -> sendMessage(outputStream, new Message(MessageType.ERROR, "Unsupported message type", null));
         }
@@ -206,6 +284,20 @@ public class ClientHandler implements Runnable {
                 ));
             } catch (IOException exception) {
                 log("Failed to sync menu: " + exception.getMessage());
+            }
+        }
+    }
+
+    private void sendExistingOrdersForCurrentTable() {
+        for (Order order : context.getOrdersForTableSnapshot(currentTableNumber)) {
+            try {
+                sendMessage(new Message(
+                        MessageType.ORDER_RECEIVED,
+                        "Existing order " + order.getOrderId() + " synced for checkout total",
+                        order
+                ));
+            } catch (IOException exception) {
+                log("Failed to sync existing order " + order.getOrderId() + ": " + exception.getMessage());
             }
         }
     }

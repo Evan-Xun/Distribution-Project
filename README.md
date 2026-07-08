@@ -57,6 +57,33 @@ This demonstrates multiple clients collaboratively placing one order.
 
 This demonstrates distributed consistency for shared menu stock.
 
+### 5. Kitchen order priority scheduling
+
+- Submitted orders enter a server-side kitchen order queue.
+- The kitchen scheduler gives takeaway orders higher priority than dine-in orders.
+- Orders with the same type are processed using FCFS (First-Come, First-Served).
+- Order status changes through `PENDING -> PREPARING -> READY -> COMPLETED`.
+- The server GUI displays the kitchen queue and live status changes.
+
+This demonstrates priority scheduling in a distributed small-business workflow.
+
+### 6. Order status synchronization
+
+- When the server changes an order status, clients at the same table receive an update.
+- Each client can see the latest order status in the client GUI.
+- Server logs show each scheduling and status update event.
+
+This demonstrates synchronization of distributed order state after submission.
+
+### 7. Main file persistence and backup replication
+
+- Orders and menu stock are saved to `data/main_state.txt`.
+- The main state file is copied to `data/backup_state.txt` after each important update.
+- The server log reports main file saving and backup replication events.
+- The server GUI includes a restore action that copies the backup file back to the main file.
+
+This demonstrates data persistence and a simple backup replication mechanism.
+
 ## Implemented Distributed Mechanisms
 
 ### Concurrency
@@ -92,6 +119,19 @@ The system currently demonstrates three locking-related mechanisms:
 - The system tracks tables that are currently submitting an order.
 - If two clients from the same table try to submit simultaneously, only one submission is accepted.
 - This prevents duplicate order creation.
+
+### Scheduling
+
+- The server uses a kitchen queue to schedule submitted orders.
+- Takeaway orders are processed before dine-in orders to support delivery priority.
+- Orders with the same type still follow FCFS order, which keeps the scheduling result fair and easy to explain.
+- The scheduler runs in a background thread so client communication can continue concurrently.
+
+### Replication
+
+- The server writes order and stock state to a main file.
+- The server then replicates the same state to a backup file.
+- The backup file can be copied back to the main file from the server GUI.
 
 ## Validation Rules Already Implemented
 
@@ -137,6 +177,53 @@ The system currently demonstrates three locking-related mechanisms:
 3. Run one or more `ClientLauncher` instances.
 4. Connect clients to the server using the default port `5001`.
 5. Use the same table number on multiple clients to test shared-cart synchronization.
+6. Run `SimulationLauncher` to open the simulation GUI for concurrency-conflict demos.
+
+## Simulation GUI
+
+The project includes a dedicated simulation panel for one-click concurrency demos.
+
+Available scenarios:
+
+- `Same-table add/remove`: multiple simulated customers on the same table add and remove the same item concurrently
+- `Same-table submit`: multiple simulated customers on the same table submit the same shared cart concurrently
+- `Cross-table stock conflict`: two different tables submit competing orders for the same item when the combined requested quantity exceeds stock
+
+These scenarios are designed to demonstrate:
+
+- table-level cart locking
+- duplicate submit prevention
+- global stock protection during atomic order submission
+
+## Concurrency Simulation Script
+
+To demonstrate concurrency and locking more clearly, the project also includes a command-line simulator:
+
+- Run `distproject.simulation.ConcurrentOrderingSimulation`
+- Or use the one-command helper script: `./run_simulation.sh`
+- Optional arguments: `host port tableNumber customerCount itemId scenario`
+- Scenario options: `both`, `add`, `submit`
+- Example: `127.0.0.1 5001 9 4 M004 both`
+
+Quick examples:
+
+- `./run_simulation.sh`
+- `./run_simulation.sh 127.0.0.1 5001 3 6 M001 add`
+- `./run_simulation.sh 127.0.0.1 5001 3 6 M001 submit`
+
+What it demonstrates:
+
+- multiple simulated customers join the same table and add the same item concurrently
+- the final shared cart quantity should match the total number of concurrent add requests
+- multiple simulated customers then submit the same table order concurrently
+- only one actual order should be created for the table, while other submissions are rejected or become invalid after the cart is cleared
+
+This gives a repeatable way to show:
+
+- multi-client concurrency
+- table-level cart locking
+- duplicate submit prevention
+- atomic order submission and stock protection
 
 ## Suggested Demo Flow
 
@@ -150,6 +237,10 @@ The system currently demonstrates three locking-related mechanisms:
    - stock is deducted
    - the updated menu is synchronized
    - duplicate submission is prevented
+7. Submit one dine-in order and one takeaway order, then watch the takeaway order receive priority in the kitchen queue.
+8. Show the client receiving `PENDING`, `PREPARING`, `READY`, and `COMPLETED` status updates.
+9. Open the runtime data folder and show that the main file and backup file are generated.
+10. Use the server restore action to demonstrate backup recovery.
 
 ## Current Scope
 
@@ -162,5 +253,9 @@ The current version already demonstrates:
 - stock locking
 - duplicate submit prevention
 - stock consistency after order submission
+- takeaway-priority kitchen order scheduling
+- order status synchronization
+- main file persistence
+- backup file replication
 
-This provides a solid foundation for further extension such as scheduling, kitchen queue handling, persistence, backup replication, and final integration.
+This provides a solid foundation for the final report and presentation demo.

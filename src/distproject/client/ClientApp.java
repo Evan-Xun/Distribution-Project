@@ -24,6 +24,7 @@ public class ClientApp {
     private Consumer<Integer> tableConsumer;
     private Consumer<TableCart> cartConsumer;
     private Consumer<String> errorConsumer;
+    private Consumer<String> checkoutConsumer;
 
     public void connect(String host, int port,
                         Consumer<List<MenuItem>> menuConsumer,
@@ -31,13 +32,15 @@ public class ClientApp {
                         Consumer<Order> orderConsumer,
                         Consumer<Integer> tableConsumer,
                         Consumer<TableCart> cartConsumer,
-                        Consumer<String> errorConsumer) throws IOException {
+                        Consumer<String> errorConsumer,
+                        Consumer<String> checkoutConsumer) throws IOException {
         this.menuConsumer = menuConsumer;
         this.statusConsumer = statusConsumer;
         this.orderConsumer = orderConsumer;
         this.tableConsumer = tableConsumer;
         this.cartConsumer = cartConsumer;
         this.errorConsumer = errorConsumer;
+        this.checkoutConsumer = checkoutConsumer;
 
         socket = new Socket(host, port);
         outputStream = new ObjectOutputStream(socket.getOutputStream());
@@ -69,12 +72,24 @@ public class ClientApp {
         send(new Message(MessageType.REGISTER_TABLE, "Register table", tableNumber));
     }
 
+    public void registerTakeaway() throws IOException {
+        send(new Message(MessageType.REGISTER_TAKEAWAY, "Register takeaway", null));
+    }
+
     public void addToSharedCart(String itemId) throws IOException {
         send(new Message(MessageType.ADD_TO_SHARED_CART, "Add item to shared cart", itemId));
     }
 
-    public void submitOrder(TableCart cart) throws IOException {
-        send(new Message(MessageType.SUBMIT_ORDER, "Submit order", cart));
+    public void removeFromSharedCart(String itemId) throws IOException {
+        send(new Message(MessageType.REMOVE_FROM_SHARED_CART, "Remove item from shared cart", itemId));
+    }
+
+    public void submitOrder(TableCart cart, boolean takeaway) throws IOException {
+        send(new Message(MessageType.SUBMIT_ORDER, "Submit order", takeaway));
+    }
+
+    public void checkout() throws IOException {
+        send(new Message(MessageType.CHECKOUT_REQUEST, "Checkout current table", null));
     }
 
     public void disconnect() {
@@ -126,6 +141,17 @@ public class ClientApp {
             case ORDER_RECEIVED -> {
                 Order order = (Order) message.getPayload();
                 orderConsumer.accept(order);
+                status(message.getText());
+            }
+            case ORDER_STATUS_UPDATED -> {
+                Order order = (Order) message.getPayload();
+                orderConsumer.accept(order);
+                status(message.getText());
+            }
+            case CHECKOUT_COMPLETED -> {
+                if (checkoutConsumer != null) {
+                    checkoutConsumer.accept(message.getText());
+                }
                 status(message.getText());
             }
             case ERROR -> {

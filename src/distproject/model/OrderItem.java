@@ -3,10 +3,16 @@ package distproject.model;
 import java.io.Serializable;
 
 public class OrderItem implements Serializable {
+    public static final String STATUS_PENDING = "PENDING";
+    public static final String STATUS_PREPARING = "PREPARING";
+    public static final String STATUS_READY = "READY";
+    public static final String STATUS_COMPLETED = "COMPLETED";
+
     private final String itemId;
     private final String itemName;
     private final double unitPrice;
     private int quantity;
+    private String status = STATUS_PENDING;
 
     public OrderItem(String itemId, String itemName, double unitPrice, int quantity) {
         this.itemId = itemId;
@@ -39,8 +45,18 @@ public class OrderItem implements Serializable {
         return unitPrice * quantity;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public OrderItem copy() {
-        return new OrderItem(itemId, itemName, unitPrice, quantity);
+        OrderItem copy = new OrderItem(itemId, itemName, unitPrice, quantity);
+        copy.status = this.status;
+        return copy;
     }
 
     @Override

@@ -13,17 +13,29 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ServerContext {
+    private static final int TAKEAWAY_BASE_PRIORITY = 100;
+    private static final int DINE_IN_BASE_PRIORITY = 70;
+    private static final int AGING_PRIORITY_STEP = 10;
+    private static final long AGING_INTERVAL_MILLIS = 10000L;
+
     private final List<MenuItem> menuItems = new CopyOnWriteArrayList<>();
     private final List<Order> orders = new CopyOnWriteArrayList<>();
     private final List<ClientHandler> clients = new CopyOnWriteArrayList<>();
     private final Map<Integer, Set<ClientHandler>> tableClients = new ConcurrentHashMap<>();
     private final Map<Integer, TableCart> tableCarts = new ConcurrentHashMap<>();
+    private final Map<Integer, Long> tableCheckoutCutoffs = new ConcurrentHashMap<>();
     private final Map<Integer, ReentrantLock> tableLocks = new ConcurrentHashMap<>();
     private final ReentrantLock stockLock = new ReentrantLock();
     private final Set<Integer> submittingTables = ConcurrentHashMap.newKeySet();
+    private final AtomicLong orderSequence = new AtomicLong();
+    private final List<Order> kitchenQueue = new ArrayList<>();
+    private final Object kitchenQueueLock = new Object();
+    private final AtomicInteger takeawayIdGenerator = new AtomicInteger(-1);
 
     public ServerContext() {
         menuItems.add(new MenuItem("M001", "Fried Rice", 8.50, 20));
@@ -49,6 +61,109 @@ public class ServerContext {
         return Collections.unmodifiableList(new ArrayList<>(orders));
     }
 
+    public List<Order> getOrdersForTableSnapshot(int tableNumber) {
+        List<Order> tableOrders = new ArrayList<>();
+        long checkoutCutoff = tableCheckoutCutoffs.getOrDefault(tableNumber, 0L);
+        for (Order order : orders) {
+            if (order.getTableNumber() == tableNumber && order.getSequenceNumber() > checkoutCutoff) {
+                tableOrders.add(order);
+            }
+        }
+        return Collections.unmodifiableList(tableOrders);
+    }
+
+    public void checkoutTable(int tableNumber) {
+        long latestSequenceForTable = tableCheckoutCutoffs.getOrDefault(tableNumber, 0L);
+        for (Order order : orders) {
+            if (order.getTableNumber() == tableNumber) {
+                latestSequenceForTable = Math.max(latestSequenceForTable, order.getSequenceNumber());
+            }
+        }
+        tableCheckoutCutoffs.put(tableNumber, latestSequenceForTable);
+        clearTableCart(tableNumber);
+    }
+
+    public boolean shouldSyncOrderToTable(Order order) {
+        long checkoutCutoff = tableCheckoutCutoffs.getOrDefault(order.getTableNumber(), 0L);
+        return order.getSequenceNumber() > checkoutCutoff;
+    }
+
+    public void enqueueKitchenOrder(Order order) {
+        synchronized (kitchenQueueLock) {
+            kitchenQueue.add(order);
+            kitchenQueueLock.notifyAll();
+        }
+    }
+
+    public Order takeNextKitchenOrder() throws InterruptedException {
+        synchronized (kitchenQueueLock) {
+            while (kitchenQueue.isEmpty()) {
+                kitchenQueueLock.wait();
+            }
+            int selectedIndex = 0;
+            Order selectedOrder = kitchenQueue.get(0);
+            long now = System.currentTimeMillis();
+
+            for (int index = 1; index < kitchenQueue.size(); index++) {
+                Order candidate = kitchenQueue.get(index);
+                if (compareKitchenPriority(candidate, selectedOrder, now) < 0) {
+                    selectedIndex = index;
+                    selectedOrder = candidate;
+                }
+            }
+            return kitchenQueue.remove(selectedIndex);
+        }
+    }
+
+    public List<Order> getKitchenQueueSnapshot() {
+        synchronized (kitchenQueueLock) {
+            List<Order> snapshot = new ArrayList<>(kitchenQueue);
+            long now = System.currentTimeMillis();
+            snapshot.sort((first, second) -> compareKitchenPriority(first, second, now));
+            return Collections.unmodifiableList(snapshot);
+        }
+    }
+
+    public List<KitchenQueueEntry> getKitchenQueueView() {
+        synchronized (kitchenQueueLock) {
+            List<Order> snapshot = new ArrayList<>(kitchenQueue);
+            long now = System.currentTimeMillis();
+            snapshot.sort((first, second) -> compareKitchenPriority(first, second, now));
+
+            List<KitchenQueueEntry> entries = new ArrayList<>();
+            for (int index = 0; index < snapshot.size(); index++) {
+                Order order = snapshot.get(index);
+                entries.add(new KitchenQueueEntry(
+                        index + 1,
+                        order.getOrderId(),
+                        order.getOrderType(),
+                        order.getSourceLabel(),
+                        Math.max(0L, (now - order.getQueuedAtMillis()) / 1000L),
+                        calculateKitchenPriority(order, now),
+                        order.getItems().size(),
+                        order.getSequenceNumber()
+                ));
+            }
+            return Collections.unmodifiableList(entries);
+        }
+    }
+
+    private int compareKitchenPriority(Order first, Order second, long now) {
+        int firstScore = calculateKitchenPriority(first, now);
+        int secondScore = calculateKitchenPriority(second, now);
+        if (firstScore != secondScore) {
+            return Integer.compare(secondScore, firstScore);
+        }
+        return Long.compare(first.getSequenceNumber(), second.getSequenceNumber());
+    }
+
+    private int calculateKitchenPriority(Order order, long now) {
+        int basePriority = order.isTakeaway() ? TAKEAWAY_BASE_PRIORITY : DINE_IN_BASE_PRIORITY;
+        long waitedMillis = Math.max(0L, now - order.getQueuedAtMillis());
+        int agingBonus = (int) (waitedMillis / AGING_INTERVAL_MILLIS) * AGING_PRIORITY_STEP;
+        return basePriority + agingBonus;
+    }
+
     public void addClient(ClientHandler clientHandler) {
         clients.add(clientHandler);
     }
@@ -67,6 +182,12 @@ public class ServerContext {
         tableClients.computeIfAbsent(tableNumber, ignored -> ConcurrentHashMap.newKeySet()).add(clientHandler);
         tableCarts.computeIfAbsent(tableNumber, TableCart::new);
         tableLocks.computeIfAbsent(tableNumber, ignored -> new ReentrantLock());
+    }
+
+    public int registerTakeawayCustomer(ClientHandler clientHandler) {
+        int virtualId = takeawayIdGenerator.getAndDecrement();
+        registerTable(virtualId, clientHandler);
+        return virtualId;
     }
 
     public void unregisterTable(ClientHandler clientHandler) {
@@ -92,6 +213,20 @@ public class ServerContext {
                 return CartUpdateResult.error("Cannot add more " + menuItem.getName() + ". Stock is insufficient.");
             }
             cart.addItem(menuItem);
+            return CartUpdateResult.success(cart.copy());
+        } finally {
+            tableLock.unlock();
+        }
+    }
+
+    public CartUpdateResult removeItemFromTableCart(int tableNumber, String itemId) {
+        ReentrantLock tableLock = getTableLock(tableNumber);
+        tableLock.lock();
+        try {
+            TableCart cart = tableCarts.computeIfAbsent(tableNumber, TableCart::new);
+            if (!cart.removeOneItem(itemId)) {
+                return CartUpdateResult.error("Item not found in shared cart");
+            }
             return CartUpdateResult.success(cart.copy());
         } finally {
             tableLock.unlock();
@@ -159,7 +294,7 @@ public class ServerContext {
         return stockLock;
     }
 
-    public SubmitResult submitOrderAtomically(int tableNumber) {
+    public SubmitResult submitOrderAtomically(int tableNumber, boolean takeaway) {
         ReentrantLock tableLock = getTableLock(tableNumber);
         tableLock.lock();
         stockLock.lock();
@@ -188,7 +323,7 @@ public class ServerContext {
                 menuItem.setStock(menuItem.getStock() - orderItem.getQuantity());
             }
 
-            Order order = new Order(cart.getTableNumber(), cart.getItems());
+            Order order = new Order(cart.getTableNumber(), cart.getItems(), takeaway, orderSequence.incrementAndGet());
             orders.add(order);
             cart.clear();
             return SubmitResult.success(order, getMenuSnapshot(), cart.copy());
@@ -272,5 +407,17 @@ public class ServerContext {
         public TableCart getUpdatedCart() {
             return updatedCart;
         }
+    }
+
+    public record KitchenQueueEntry(
+            int rank,
+            String orderId,
+            String orderType,
+            String source,
+            long waitingSeconds,
+            int priorityScore,
+            int itemCount,
+            long sequenceNumber
+    ) {
     }
 }
