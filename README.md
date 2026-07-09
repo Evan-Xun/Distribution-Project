@@ -6,7 +6,7 @@ Java-based distributed client-server restaurant ordering system with multiple GU
 
 This project implements a small business client-server system for a restaurant ordering scenario. The system is developed with Java Swing for the GUI and Java Socket programming for distributed communication between server and clients.
 
-The project includes a main launcher, a server GUI, dine-in and takeaway client modes, a simulation GUI, and a command-line concurrency simulation script.
+The project includes a main launcher, a server GUI, dine-in and takeaway client modes, a backup replica server GUI, a simulation GUI, and a command-line concurrency simulation script.
 
 The server manages:
 
@@ -87,6 +87,7 @@ This demonstrates synchronization of distributed order state after submission.
 - The main state file is copied to `data/backup_state.txt` after each important update.
 - The primary server also sends the same state snapshot to an independent backup replica server on port `6001`.
 - The backup replica server stores the received snapshot in `data/replica-server/replica_state.txt`.
+- The replica server GUI displays the latest replicated snapshot and replica log events.
 - The server log reports main file saving, local backup replication, and distributed replica synchronization events.
 - The server GUI includes a restore action that copies the backup file back to the main file.
 
@@ -139,8 +140,9 @@ The system currently demonstrates three locking-related mechanisms:
 ### Replication
 
 - The server writes order and stock state to a main file.
-- The server then replicates the same state to a backup file.
-- The server also sends the state snapshot to a separate backup replica server over a socket connection.
+- The server then replicates the same state to a local backup file.
+- The server also sends the same state snapshot to a separate backup replica server over a socket connection.
+- The replica server receives the snapshot and stores it independently in its own replica data folder.
 - The backup file can be copied back to the main file from the server GUI.
 
 ## Validation Rules Already Implemented
@@ -176,18 +178,28 @@ The system currently demonstrates three locking-related mechanisms:
 - order status update display
 - popup error feedback
 
+### Backup Replica Server GUI
+
+- start/stop replica server
+- listen on replica port `6001`
+- replica log display
+- latest replicated snapshot display
+
 ## Main Classes
 
-- `Main`: opens the main launcher for server, client, and simulation windows
+- `Main`: opens the main launcher for server, client, simulation, and replica windows
 - `ServerLauncher`: launches the server GUI
 - `ClientLauncher`: launches the client mode selector
 - `SimulationLauncher`: launches the simulation GUI
+- `ReplicaServerLauncher`: launches the backup replica server GUI
 - `ServerApp`: server socket lifecycle
 - `ClientHandler`: per-client request handling
 - `ServerContext`: shared distributed state, cart management, stock control, locking
-- `PersistenceManager`: saves the main state file and replicates it to the backup file
+- `PersistenceManager`: saves the main state file, copies it to the local backup file, and sends snapshots to the replica server
+- `ReplicaServerApp`: backup replica socket server that receives and stores replicated snapshots
 - `ClientApp`: client networking logic
 - `ServerFrame`: server GUI
+- `ReplicaServerFrame`: backup replica server GUI
 - `OrderModeSelector`: lets the user choose dine-in or takeaway mode
 - `ClientFrame`: client GUI
 - `SimulationFrame`: one-click simulation GUI
@@ -197,12 +209,14 @@ The system currently demonstrates three locking-related mechanisms:
 ## How To Run
 
 1. Open the project in IntelliJ IDEA.
-2. Run `ReplicaServerLauncher` and start the replica server on port `6001`.
-3. Run `ServerLauncher`.
-4. Run one or more `ClientLauncher` instances.
-5. Connect clients to the server using the default port `5001`.
-6. Use the same table number on multiple clients to test shared-cart synchronization.
-6. Run `SimulationLauncher` to open the simulation GUI for concurrency-conflict demos.
+2. Make sure `lib/flatlaf-3.4.jar` is included on the classpath.
+3. Run `Main` to open the launcher, then choose Server, Client, Simulation, or Replica.
+4. For the full replication demo, open `Replica` first and start the replica server on port `6001`.
+5. Open `Server` and start the primary server on the default port `5001`.
+6. Open one or more `Client` windows.
+7. Choose `Dine In` to test shared carts by table, or choose `Takeaway` to test takeaway priority scheduling.
+8. Use the same table number on multiple dine-in clients to test shared-cart synchronization.
+9. Run `SimulationLauncher` or choose `Simulation` from `Main` to open the simulation GUI for concurrency-conflict demos.
 
 ## Simulation GUI
 
@@ -252,23 +266,25 @@ This gives a repeatable way to show:
 
 ## Suggested Demo Flow
 
-1. Start one server and two clients.
-2. Choose `Dine In` for both clients and let both clients join the same table.
-3. Add an item from Client A and show that Client B sees the same shared cart update.
-4. Add more items from Client B and show synchronization back to Client A.
-5. Remove an item and show that the shared cart stays synchronized.
-6. Submit the order from one client.
-7. Open the order status panel and show the order moving through `PENDING`, `PREPARING`, `READY`, and `COMPLETED`.
-8. Show that:
+1. Start the backup replica server on port `6001`.
+2. Start one primary server and two clients.
+3. Choose `Dine In` for both clients and let both clients join the same table.
+4. Add an item from Client A and show that Client B sees the same shared cart update.
+5. Add more items from Client B and show synchronization back to Client A.
+6. Remove an item and show that the shared cart stays synchronized.
+7. Submit the order from one client.
+8. Open the order status panel and show the order moving through `PENDING`, `PREPARING`, `READY`, and `COMPLETED`.
+9. Show that:
    - the cart is cleared for both clients
    - stock is deducted
    - the updated menu is synchronized
    - duplicate submission is prevented
-7. Submit one dine-in order and one takeaway order, then watch the takeaway order receive priority in the kitchen queue.
-8. Show the client receiving `PENDING`, `PREPARING`, `READY`, and `COMPLETED` status updates.
-9. Open the runtime data folder and show that the main file and backup file are generated.
-10. Show the backup replica server receiving the latest replicated snapshot.
-11. Use the server restore action to demonstrate backup recovery.
+10. Submit one dine-in order and one takeaway order, then compare their priority in the kitchen queue.
+11. Show that takeaway starts with higher priority while dine-in orders can gain priority through waiting time.
+12. Use checkout to clear submitted-order billing for a table or takeaway customer.
+13. Open the runtime data folder and show that `data/main_state.txt` and `data/backup_state.txt` are generated.
+14. Show the backup replica server receiving and displaying the latest replicated snapshot from `data/replica-server/replica_state.txt`.
+15. Use the server restore action to demonstrate backup recovery from the local backup file.
 
 ## Current Scope
 
