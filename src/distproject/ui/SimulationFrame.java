@@ -24,7 +24,7 @@ public class SimulationFrame extends JFrame {
     private final JTextField customerCountField = new JTextField("4");
     private final JTextField itemIdField = new JTextField("M005");
     private final JTextArea logArea = new JTextArea();
-    private final JButton cartConflictButton = new JButton("Run Same-Table Add/Remove");
+    private final JButton cartConflictButton = new JButton("Run Same-Table Concurrent Add");
     private final JButton submitConflictButton = new JButton("Run Same-Table Submit");
     private final JButton stockConflictButton = new JButton("Run Cross-Table Stock Conflict");
 
@@ -137,7 +137,7 @@ public class SimulationFrame extends JFrame {
     }
 
     private enum Scenario {
-        CART_CONFLICT("Same-table add/remove"),
+        CART_CONFLICT("Same-table concurrent add"),
         SAME_TABLE_SUBMIT("Same-table submit"),
         CROSS_TABLE_STOCK("Cross-table stock conflict");
 

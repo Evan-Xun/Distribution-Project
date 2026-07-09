@@ -25,7 +25,7 @@ public class ConcurrentOrderingSimulation {
     private static final String DEFAULT_HOST = "127.0.0.1";
     private static final int DEFAULT_PORT = 5001;
     private static final int DEFAULT_TABLE = 9;
-    private static final int DEFAULT_CUSTOMERS = 4;
+    private static final int DEFAULT_CUSTOMERS = 2;
     private static final String DEFAULT_ITEM_ID = "M004";
     private static final String DEFAULT_SCENARIO = "both";
 
@@ -33,7 +33,7 @@ public class ConcurrentOrderingSimulation {
         Config config = Config.fromArgs(args);
         System.out.println("=== Concurrent Ordering Simulation ===");
         System.out.println("Host: " + config.host + ":" + config.port);
-        System.out.println("Table: " + config.tableNumber);
+        System.out.println("table " + config.tableNumber);
         System.out.println("Customers: " + config.customerCount);
         System.out.println("Item for concurrent add: " + config.itemId);
         System.out.println("Scenario: " + config.scenario);
@@ -48,6 +48,7 @@ public class ConcurrentOrderingSimulation {
             }
 
             if (config.runsAddScenario()) {
+                resetCartForAddScenario(customers);
                 runConcurrentAddScenario(customers, config.itemId);
             }
             if (config.runsSubmitScenario()) {
@@ -61,6 +62,18 @@ public class ConcurrentOrderingSimulation {
                 customer.close();
             }
         }
+    }
+
+    private static void resetCartForAddScenario(List<SimulatedCustomer> customers) throws IOException, InterruptedException {
+        System.out.println("--- Resetting shared cart before concurrent add scenario ---");
+        SimulatedCustomer resetCustomer = customers.get(0);
+        resetCustomer.checkoutTable();
+        Thread.sleep(300);
+        syncQueuedBroadcasts(customers, 200);
+        TableCart emptyCart = resetCustomer.getLatestCart();
+        int itemCount = emptyCart == null ? -1 : emptyCart.getItems().size();
+        System.out.println("Initial shared cart item count: " + itemCount);
+        System.out.println();
     }
 
     private static void prepareCartForSubmitScenario(List<SimulatedCustomer> customers, String itemId)
@@ -77,7 +90,7 @@ public class ConcurrentOrderingSimulation {
     }
 
     private static void runConcurrentAddScenario(List<SimulatedCustomer> customers, String itemId) throws InterruptedException {
-        System.out.println("--- Scenario 1: Concurrent add to the same shared cart ---");
+        System.out.println("--- Scenario 1: Two customers concurrently add the same item to an empty shared cart ---");
         CountDownLatch readyGate = new CountDownLatch(customers.size());
         CountDownLatch startGate = new CountDownLatch(1);
         CountDownLatch doneGate = new CountDownLatch(customers.size());
@@ -112,7 +125,7 @@ public class ConcurrentOrderingSimulation {
         System.out.println("Expected quantity for " + itemId + ": " + customers.size());
         System.out.println("Actual quantity in shared cart: " + finalQuantity);
         System.out.println(finalQuantity == customers.size()
-                ? "Result: no lost update detected. Table cart locking worked."
+                ? "Result: two concurrent adds were preserved. Table cart locking prevented lost update."
                 : "Result: quantity mismatch. Investigate cart locking.");
         printCustomerErrors(customers);
         System.out.println();
@@ -280,6 +293,11 @@ public class ConcurrentOrderingSimulation {
 
         private void addItem(String itemId) throws IOException {
             send(new Message(MessageType.ADD_TO_SHARED_CART, "Add item to shared cart", itemId));
+            drainMessages(250);
+        }
+
+        private void checkoutTable() throws IOException {
+            send(new Message(MessageType.CHECKOUT_REQUEST, "Reset table before simulation", null));
             drainMessages(250);
         }
 

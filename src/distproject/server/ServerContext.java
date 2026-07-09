@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 public class ServerContext {
     private static final int TAKEAWAY_BASE_PRIORITY = 100;
@@ -201,9 +202,10 @@ public class ServerContext {
         return tableClients.getOrDefault(tableNumber, Collections.emptySet()).size();
     }
 
-    public CartUpdateResult addItemToTableCart(int tableNumber, MenuItem menuItem) {
+    public CartUpdateResult addItemToTableCart(int tableNumber, MenuItem menuItem, Consumer<String> logConsumer) {
         ReentrantLock tableLock = getTableLock(tableNumber);
         tableLock.lock();
+        log(logConsumer, "Cart lock acquired for table " + tableNumber + " while adding " + menuItem.getName());
         try {
             TableCart cart = tableCarts.computeIfAbsent(tableNumber, TableCart::new);
             if (menuItem.getStock() <= 0) {
@@ -213,23 +215,28 @@ public class ServerContext {
                 return CartUpdateResult.error("Cannot add more " + menuItem.getName() + ". Stock is insufficient.");
             }
             cart.addItem(menuItem);
+            log(logConsumer, "Shared cart updated: table " + tableNumber + " added " + menuItem.getName());
             return CartUpdateResult.success(cart.copy());
         } finally {
             tableLock.unlock();
+            log(logConsumer, "Cart lock released for table " + tableNumber);
         }
     }
 
-    public CartUpdateResult removeItemFromTableCart(int tableNumber, String itemId) {
+    public CartUpdateResult removeItemFromTableCart(int tableNumber, MenuItem menuItem, Consumer<String> logConsumer) {
         ReentrantLock tableLock = getTableLock(tableNumber);
         tableLock.lock();
+        log(logConsumer, "Cart lock acquired for table " + tableNumber + " while removing " + menuItem.getName());
         try {
             TableCart cart = tableCarts.computeIfAbsent(tableNumber, TableCart::new);
-            if (!cart.removeOneItem(itemId)) {
+            if (!cart.removeOneItem(menuItem.getId())) {
                 return CartUpdateResult.error("Item not found in shared cart");
             }
+            log(logConsumer, "Shared cart updated: table " + tableNumber + " removed one " + menuItem.getName());
             return CartUpdateResult.success(cart.copy());
         } finally {
             tableLock.unlock();
+            log(logConsumer, "Cart lock released for table " + tableNumber);
         }
     }
 
@@ -294,10 +301,12 @@ public class ServerContext {
         return stockLock;
     }
 
-    public SubmitResult submitOrderAtomically(int tableNumber, boolean takeaway) {
+    public SubmitResult submitOrderAtomically(int tableNumber, boolean takeaway, Consumer<String> logConsumer) {
         ReentrantLock tableLock = getTableLock(tableNumber);
         tableLock.lock();
+        log(logConsumer, "Cart lock acquired for table " + tableNumber + " during submit");
         stockLock.lock();
+        log(logConsumer, "Stock lock acquired for table " + tableNumber + " during submit");
         try {
             TableCart cart = tableCarts.computeIfAbsent(tableNumber, TableCart::new);
             if (cart.isEmpty()) {
@@ -329,7 +338,15 @@ public class ServerContext {
             return SubmitResult.success(order, getMenuSnapshot(), cart.copy());
         } finally {
             stockLock.unlock();
+            log(logConsumer, "Stock lock released for table " + tableNumber);
             tableLock.unlock();
+            log(logConsumer, "Cart lock released for table " + tableNumber);
+        }
+    }
+
+    private void log(Consumer<String> logConsumer, String message) {
+        if (logConsumer != null) {
+            logConsumer.accept(message);
         }
     }
 

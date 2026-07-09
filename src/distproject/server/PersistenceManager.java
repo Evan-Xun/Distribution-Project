@@ -29,10 +29,10 @@ public class PersistenceManager {
             String snapshot = buildSnapshot(orders, menuItems);
             Files.createDirectories(dataDirectory);
             Files.writeString(mainFile, snapshot, StandardCharsets.UTF_8);
-            logConsumer.accept("Main file saved: " + mainFile.toAbsolutePath());
+            logConsumer.accept("Main file saved: " + mainFile);
 
             Files.copy(mainFile, backupFile, StandardCopyOption.REPLACE_EXISTING);
-            logConsumer.accept("Replication completed: backup file updated at " + backupFile.toAbsolutePath());
+            logConsumer.accept("Replication completed: backup file updated at " + backupFile);
             replicateToBackupServer(snapshot, logConsumer);
         } catch (IOException exception) {
             logConsumer.accept("Persistence/replication failed: " + exception.getMessage());
