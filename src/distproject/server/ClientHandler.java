@@ -131,17 +131,13 @@ public class ClientHandler implements Runnable {
                     return;
                 }
 
-                log("Cart lock acquired for table " + currentTableNumber + " while adding " + menuItem.getName());
-                ServerContext.CartUpdateResult result = context.addItemToTableCart(currentTableNumber, menuItem);
+                ServerContext.CartUpdateResult result = context.addItemToTableCart(currentTableNumber, menuItem, this::log);
                 if (!result.isSuccess()) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
                     log("Add to cart rejected for table " + currentTableNumber + ": " + result.getErrorMessage());
-                    log("Cart lock released for table " + currentTableNumber);
                     return;
                 }
                 TableCart updatedCart = result.getUpdatedCart();
-                log("Shared cart updated: table " + currentTableNumber + " added " + menuItem.getName());
-                log("Cart lock released for table " + currentTableNumber);
                 broadcastCartUpdate(currentTableNumber, updatedCart);
             }
             case REMOVE_FROM_SHARED_CART -> {
@@ -160,17 +156,13 @@ public class ClientHandler implements Runnable {
                     return;
                 }
 
-                log("Cart lock acquired for table " + currentTableNumber + " while removing " + menuItem.getName());
-                ServerContext.CartUpdateResult result = context.removeItemFromTableCart(currentTableNumber, itemId);
+                ServerContext.CartUpdateResult result = context.removeItemFromTableCart(currentTableNumber, menuItem, this::log);
                 if (!result.isSuccess()) {
                     sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
                     log("Remove from cart rejected for table " + currentTableNumber + ": " + result.getErrorMessage());
-                    log("Cart lock released for table " + currentTableNumber);
                     return;
                 }
                 TableCart updatedCart = result.getUpdatedCart();
-                log("Shared cart updated: table " + currentTableNumber + " removed one " + menuItem.getName());
-                log("Cart lock released for table " + currentTableNumber);
                 broadcastCartUpdate(currentTableNumber, updatedCart);
             }
             case SUBMIT_ORDER -> {
@@ -190,9 +182,7 @@ public class ClientHandler implements Runnable {
 
                 try {
                     boolean takeaway = Boolean.TRUE.equals(message.getPayload());
-                    log("Cart lock acquired for table " + currentTableNumber + " during submit");
-                    log("Stock lock acquired for table " + currentTableNumber + " during submit");
-                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber, takeaway);
+                    ServerContext.SubmitResult result = context.submitOrderAtomically(currentTableNumber, takeaway, this::log);
                     if (!result.isSuccess()) {
                         sendMessage(outputStream, new Message(MessageType.ERROR, result.getErrorMessage(), null));
                         return;
@@ -216,8 +206,6 @@ public class ClientHandler implements Runnable {
                     broadcastCartUpdate(currentTableNumber, result.getClearedCart());
                     broadcastMenuUpdate(result.getUpdatedMenu());
                 } finally {
-                    log("Stock lock released for table " + currentTableNumber);
-                    log("Cart lock released for table " + currentTableNumber);
                     context.endSubmit(currentTableNumber);
                 }
             }

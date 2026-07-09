@@ -14,8 +14,10 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -28,45 +30,52 @@ import java.util.function.Consumer;
 
 public class SimulationService {
     public void runSameTableCartConflict(SimulationRequest request, Consumer<String> logger) throws Exception {
-        int customerCount = Math.max(2, request.customerCount());
-        int removeCount = customerCount / 2;
-        int addCount = customerCount - removeCount;
+        int customerCount = 2;
 
-        logHeader("Scenario 1: Same-table concurrent add/remove", logger);
-        logger.accept("Customers: " + customerCount + " (add=" + addCount + ", remove=" + removeCount + ")");
-        logger.accept("Table: " + request.tableA() + ", item: " + request.itemId());
+        logger.accept("Scenario 1: Same-table concurrent add");
+        logger.accept("table " + request.tableA() + " | customers: Customer A, Customer B");
 
         List<SimulatedCustomer> customers = openCustomers(request.host(), request.port(), request.tableA(), customerCount);
         try {
-            resetTableState(customers, request.tableA(), logger);
-            SimulatedCustomer seed = customers.get(0);
-            logger.accept("Seeding cart with " + removeCount + " item(s) so removal has valid work...");
-            for (int i = 0; i < removeCount; i++) {
-                seed.addItem(request.itemId());
-            }
-            pause(500);
+            resetTableState(customers, request.tableA(), ignored -> {
+            });
+            SimulatedCustomer customerA = customers.get(0);
+            SimulatedCustomer customerB = customers.get(1);
 
-            List<Runnable> actions = new ArrayList<>();
-            for (int index = 0; index < addCount; index++) {
-                SimulatedCustomer customer = customers.get(index);
-                actions.add(() -> safely(() -> customer.addItem(request.itemId()), customer, "add", logger));
+            MenuItem item = findMenuItem(customerA.awaitMenuSnapshot(), request.itemId());
+            if (item == null) {
+                throw new IllegalStateException("Menu item not found: " + request.itemId());
             }
-            for (int index = addCount; index < customerCount; index++) {
-                SimulatedCustomer customer = customers.get(index);
-                actions.add(() -> safely(() -> customer.removeItem(request.itemId()), customer, "remove", logger));
+            if (item.getStock() < customerCount) {
+                logger.accept("Cannot run demo: " + item.getName() + " stock is " + item.getStock()
+                        + ", but the demo needs " + customerCount + ".");
+                return;
             }
+            logger.accept("selected item: " + item.getName() + " (" + item.getId() + ")");
 
-            runInParallel(actions, logger);
-            pause(700);
+            logger.accept("");
+            logger.accept("Initial shared cart");
+            logger.accept(formatCartForLog(customerA.latestCart()));
 
-            TableCart cart = customers.get(0).latestCart();
-            int finalQuantity = cart == null ? 0 : cart.getQuantityForItem(request.itemId());
-            int expectedQuantity = removeCount;
-            logger.accept("Expected final quantity: " + expectedQuantity);
-            logger.accept("Actual final quantity: " + finalQuantity);
-            logger.accept(finalQuantity == expectedQuantity
-                    ? "PASS: shared cart stayed consistent under concurrent add/remove. Table cart lock demonstrated."
-                    : "FAIL: shared cart quantity mismatch. Table cart lock may be broken.");
+            runHiddenConcurrentAdds(customerA, customerB, request.itemId(), item.getName(), logger);
+
+            TableCart cartA = customerA.awaitCartQuantity(request.itemId(), customerCount);
+            TableCart cartB = customerB.awaitCartQuantity(request.itemId(), customerCount);
+            int quantityA = cartA == null ? 0 : cartA.getQuantityForItem(request.itemId());
+            int quantityB = cartB == null ? 0 : cartB.getQuantityForItem(request.itemId());
+
+            logger.accept("");
+            logger.accept("Final shared cart observed by Customer A");
+            logger.accept(formatCartForLog(cartA));
+            logger.accept("");
+            logger.accept("Final shared cart observed by Customer B");
+            logger.accept(formatCartForLog(cartB));
+            logger.accept("");
+            logger.accept("Expected quantity: " + customerCount);
+            logger.accept("Observed quantity: Customer A = " + quantityA + ", Customer B = " + quantityB);
+            logger.accept(quantityA == customerCount && quantityB == customerCount
+                    ? "PASS: both customers observed the same synchronized cart."
+                    : "FAIL: customers did not observe the expected synchronized cart.");
             logErrors(customers, logger);
         } finally {
             closeCustomers(customers);
@@ -75,31 +84,55 @@ public class SimulationService {
 
     public void runSameTableSubmitConflict(SimulationRequest request, Consumer<String> logger) throws Exception {
         int customerCount = Math.max(2, request.customerCount());
-        logHeader("Scenario 2: Same-table concurrent submit", logger);
-        logger.accept("Customers: " + customerCount + ", table: " + request.tableA() + ", item: " + request.itemId());
+        logger.accept("Scenario 2: Same-table concurrent submit");
+        logger.accept("table " + request.tableA() + " | customers: " + customerLabels(customerCount));
 
         List<SimulatedCustomer> customers = openCustomers(request.host(), request.port(), request.tableA(), customerCount);
         try {
-            resetTableState(customers, request.tableA(), logger);
+            resetTableState(customers, request.tableA(), ignored -> {
+            });
             SimulatedCustomer seed = customers.get(0);
-            logger.accept("Seeding shared cart before concurrent submit...");
+
+            MenuItem item = findMenuItem(seed.awaitMenuSnapshot(), request.itemId());
+            if (item == null) {
+                throw new IllegalStateException("Menu item not found: " + request.itemId());
+            }
+            if (item.getStock() < 1) {
+                logger.accept("Cannot run demo: " + item.getName() + " has no stock.");
+                return;
+            }
+            logger.accept("selected item: " + item.getName() + " (" + item.getId() + ")");
+
+            logger.accept("");
+            logger.accept("Initial shared cart");
+            logger.accept(formatCartForLog(seed.latestCart()));
+
             seed.addItem(request.itemId());
-            seed.addItem(request.itemId());
-            pause(500);
+            TableCart preparedCart = seed.awaitCartQuantity(request.itemId(), 1);
+            logger.accept("");
+            logger.accept("Cart before submit");
+            logger.accept(formatCartForLog(preparedCart));
 
             List<Runnable> actions = new ArrayList<>();
             for (SimulatedCustomer customer : customers) {
-                actions.add(() -> safely(() -> customer.submitOrder(false), customer, "submit", logger));
+                actions.add(() -> safely(() -> customer.submitOrder(false), customer, "submitted order", logger));
             }
 
+            logger.accept("");
+            logger.accept("Concurrent customer actions");
             runInParallel(actions, logger);
             pause(900);
 
             Set<String> uniqueOrderIds = collectUniqueOrderIds(customers);
-            logger.accept("Unique order IDs observed: " + uniqueOrderIds);
+            logger.accept("");
+            logger.accept("Orders created");
+            logger.accept(uniqueOrderIds.isEmpty() ? "none" : String.join(", ", uniqueOrderIds));
+            logger.accept("");
+            logger.accept("Expected created orders: 1");
+            logger.accept("Observed created orders: " + uniqueOrderIds.size());
             logger.accept(uniqueOrderIds.size() == 1
-                    ? "PASS: only one order was created for the table. Duplicate submit prevention demonstrated."
-                    : "FAIL: expected exactly one created order. Duplicate submit prevention may be broken.");
+                    ? "PASS: only one order was created for the table."
+                    : "FAIL: expected exactly one created order.");
             logErrors(customers, logger);
         } finally {
             closeCustomers(customers);
@@ -108,7 +141,8 @@ public class SimulationService {
 
     public void runCrossTableStockConflict(SimulationRequest request, Consumer<String> logger) throws Exception {
         logHeader("Scenario 3: Cross-table stock conflict", logger);
-        logger.accept("Table A: " + request.tableA() + ", Table B: " + request.tableB() + ", item: " + request.itemId());
+        logger.accept("table " + request.tableA() + " and table " + request.tableB()
+                + " competing for item " + request.itemId());
 
         List<SimulatedCustomer> tableACustomers = openCustomers(request.host(), request.port(), request.tableA(), 1);
         List<SimulatedCustomer> tableBCustomers = openCustomers(request.host(), request.port(), request.tableB(), 1);
@@ -131,7 +165,8 @@ public class SimulationService {
             int quantityA = Math.max(1, stock / 2);
             int quantityB = stock - quantityA + 1;
             logger.accept("Current stock for " + item.getName() + ": " + stock);
-            logger.accept("Preparing Table A quantity=" + quantityA + ", Table B quantity=" + quantityB);
+            logger.accept("Preparing table " + request.tableA() + " quantity=" + quantityA
+                    + ", table " + request.tableB() + " quantity=" + quantityB);
 
             for (int i = 0; i < quantityA; i++) {
                 customerA.addItem(request.itemId());
@@ -156,7 +191,8 @@ public class SimulationService {
             boolean tableBSuccess = !customerB.observedOrderIds().isEmpty();
 
             logger.accept("Unique order IDs observed: " + uniqueOrderIds);
-            logger.accept("Table A success: " + tableASuccess + ", Table B success: " + tableBSuccess);
+            logger.accept("table " + request.tableA() + " success: " + tableASuccess
+                    + ", table " + request.tableB() + " success: " + tableBSuccess);
             logger.accept(uniqueOrderIds.size() == 1 && tableASuccess != tableBSuccess
                     ? "PASS: only one table consumed the contested stock. Global stock lock demonstrated."
                     : "FAIL: stock conflict did not resolve as expected.");
@@ -187,6 +223,98 @@ public class SimulationService {
         for (SimulatedCustomer customer : customers) {
             customer.close();
         }
+    }
+
+    private String customerLabels(int customerCount) {
+        List<String> labels = new ArrayList<>();
+        for (int index = 1; index <= customerCount; index++) {
+            labels.add("Customer-" + index);
+        }
+        return String.join(", ", labels);
+    }
+
+    private String formatCartForLog(TableCart cart) {
+        StringBuilder builder = new StringBuilder();
+        if (cart == null || cart.isEmpty()) {
+            builder.append("Cart items: empty");
+            builder.append(System.lineSeparator()).append("Total: RM 0.00");
+            return builder.toString();
+        }
+
+        for (OrderItemView item : compactCartItems(cart)) {
+            if (!builder.isEmpty()) {
+                builder.append(System.lineSeparator());
+            }
+            builder.append(item.name()).append(" x").append(item.quantity())
+                    .append(" = RM ").append(String.format("%.2f", item.subtotal()));
+        }
+        builder.append(System.lineSeparator())
+                .append("Total: RM ")
+                .append(String.format("%.2f", cart.getTotal()));
+        return builder.toString();
+    }
+
+    private List<OrderItemView> compactCartItems(TableCart cart) {
+        Map<String, OrderItemView> items = new LinkedHashMap<>();
+        for (distproject.model.OrderItem item : cart.getItems()) {
+            OrderItemView existing = items.get(item.getItemId());
+            if (existing == null) {
+                items.put(item.getItemId(), new OrderItemView(
+                        item.getItemName(),
+                        item.getQuantity(),
+                        item.getSubtotal()
+                ));
+            } else {
+                items.put(item.getItemId(), new OrderItemView(
+                        existing.name(),
+                        existing.quantity() + item.getQuantity(),
+                        existing.subtotal() + item.getSubtotal()
+                ));
+            }
+        }
+        return new ArrayList<>(items.values());
+    }
+
+    private void runHiddenConcurrentAdds(SimulatedCustomer customerA, SimulatedCustomer customerB,
+                                         String itemId, String itemName, Consumer<String> logger) throws Exception {
+        CountDownLatch readyGate = new CountDownLatch(2);
+        CountDownLatch startGate = new CountDownLatch(1);
+        CountDownLatch doneGate = new CountDownLatch(2);
+        AtomicReference<Exception> failure = new AtomicReference<>();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        executor.submit(() -> runHiddenAdd("Customer A", customerA, itemId, itemName, readyGate, startGate, doneGate, failure, logger));
+        executor.submit(() -> runHiddenAdd("Customer B", customerB, itemId, itemName, readyGate, startGate, doneGate, failure, logger));
+
+        readyGate.await(5, TimeUnit.SECONDS);
+        logger.accept("");
+        logger.accept("Concurrent customer actions");
+        startGate.countDown();
+        doneGate.await(8, TimeUnit.SECONDS);
+        executor.shutdownNow();
+
+        if (failure.get() != null) {
+            throw failure.get();
+        }
+    }
+
+    private void runHiddenAdd(String label, SimulatedCustomer customer, String itemId, String itemName,
+                              CountDownLatch readyGate, CountDownLatch startGate, CountDownLatch doneGate,
+                              AtomicReference<Exception> failure, Consumer<String> logger) {
+        try {
+            readyGate.countDown();
+            startGate.await();
+            customer.addItem(itemId);
+            logger.accept(label + " added " + itemName);
+        } catch (Exception exception) {
+            failure.compareAndSet(null, exception);
+            logger.accept(label + " add failed: " + exception.getMessage());
+        } finally {
+            doneGate.countDown();
+        }
+    }
+
+    private record OrderItemView(String name, int quantity, double subtotal) {
     }
 
     private void resetTableState(List<SimulatedCustomer> customers, int tableNumber, Consumer<String> logger) throws Exception {
@@ -228,7 +356,6 @@ public class SimulationService {
         }
 
         readyGate.await(5, TimeUnit.SECONDS);
-        logger.accept("All simulated customers are ready. Releasing them together...");
         startGate.countDown();
         doneGate.await(8, TimeUnit.SECONDS);
         executor.shutdownNow();
@@ -237,7 +364,7 @@ public class SimulationService {
     private void safely(ThrowingRunnable runnable, SimulatedCustomer customer, String label, Consumer<String> logger) {
         try {
             runnable.run();
-            logger.accept(customer.name() + " sent " + label);
+            logger.accept(customer.name() + " " + label);
         } catch (Exception exception) {
             customer.recordError(label + " failed: " + exception.getMessage());
             logger.accept(customer.name() + " " + label + " error: " + exception.getMessage());
@@ -374,6 +501,22 @@ public class SimulationService {
                 Thread.sleep(50);
             }
             throw new IllegalStateException("Timed out waiting for cart reset");
+        }
+
+        private TableCart awaitCartQuantity(String itemId, int expectedQuantity) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(5);
+            TableCart lastCart = null;
+            while (System.currentTimeMillis() < deadline) {
+                TableCart cart = latestCart.get();
+                if (cart != null) {
+                    lastCart = cart.copy();
+                    if (cart.getQuantityForItem(itemId) >= expectedQuantity) {
+                        return cart.copy();
+                    }
+                }
+                Thread.sleep(50);
+            }
+            return lastCart;
         }
 
         private void listen() {

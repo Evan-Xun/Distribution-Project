@@ -74,7 +74,7 @@ public class ReplicaServerApp {
             Files.createDirectories(dataDirectory);
             Files.writeString(replicaFile, snapshot, StandardCharsets.UTF_8);
             snapshotConsumer.accept(snapshot);
-            log("Replica snapshot received and stored at " + replicaFile.toAbsolutePath()
+            log("Replica snapshot received and stored at " + replicaFile
                     + " | " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         } catch (IOException exception) {
             log("Failed to store replica snapshot: " + exception.getMessage());
