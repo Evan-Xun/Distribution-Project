@@ -6,6 +6,8 @@ Java-based distributed client-server restaurant ordering system with multiple GU
 
 This project implements a small business client-server system for a restaurant ordering scenario. The system is developed with Java Swing for the GUI and Java Socket programming for distributed communication between server and clients.
 
+The project includes a main launcher, a server GUI, dine-in and takeaway client modes, a simulation GUI, and a command-line concurrency simulation script.
+
 The server manages:
 
 - client connections
@@ -17,11 +19,14 @@ The server manages:
 Each client can:
 
 - connect to the server
-- select a table number
+- select a table number for dine-in orders
+- use a separate takeaway mode
 - view the menu
 - join a shared cart for the same table
 - add items into the shared cart
+- remove items from the shared cart
 - submit the order
+- check out submitted orders
 
 ## Implemented Distributed Features
 
@@ -60,10 +65,11 @@ This demonstrates distributed consistency for shared menu stock.
 ### 5. Kitchen order priority scheduling
 
 - Submitted orders enter a server-side kitchen order queue.
-- The kitchen scheduler gives takeaway orders higher priority than dine-in orders.
-- Orders with the same type are processed using FCFS (First-Come, First-Served).
+- The kitchen scheduler gives takeaway orders a higher initial priority than dine-in orders.
+- Dine-in orders receive an aging bonus while waiting, so long-waiting orders can move up in priority.
+- Orders with the same priority are processed using FCFS (First-Come, First-Served).
 - Order status changes through `PENDING -> PREPARING -> READY -> COMPLETED`.
-- The server GUI displays the kitchen queue and live status changes.
+- The server GUI displays the kitchen queue, kitchen stations, received orders, and live status changes.
 
 This demonstrates priority scheduling in a distributed small-business workflow.
 
@@ -125,8 +131,9 @@ The system currently demonstrates three locking-related mechanisms:
 ### Scheduling
 
 - The server uses a kitchen queue to schedule submitted orders.
-- Takeaway orders are processed before dine-in orders to support delivery priority.
-- Orders with the same type still follow FCFS order, which keeps the scheduling result fair and easy to explain.
+- Takeaway orders receive higher initial priority to support delivery priority.
+- Dine-in orders receive an aging priority bonus while waiting, which prevents them from being ignored when takeaway orders keep arriving.
+- Orders with the same priority still follow FCFS order, which keeps the scheduling result fair and easy to explain.
 - The scheduler runs in a background thread so client communication can continue concurrently.
 
 ### Replication
@@ -150,28 +157,42 @@ The system currently demonstrates three locking-related mechanisms:
 
 - start/stop server
 - server log display
+- kitchen queue display
+- kitchen station display
 - received order display
+- restore backup file action
 
 ### Client GUI
 
 - connect to server
+- choose dine-in or takeaway mode
 - select or change table number
 - refresh menu
 - shared cart display
 - add selected menu item
+- remove selected menu item
 - submit order
+- checkout submitted orders
+- order status update display
 - popup error feedback
 
 ## Main Classes
 
+- `Main`: opens the main launcher for server, client, and simulation windows
 - `ServerLauncher`: launches the server GUI
-- `ClientLauncher`: launches the client GUI
+- `ClientLauncher`: launches the client mode selector
+- `SimulationLauncher`: launches the simulation GUI
 - `ServerApp`: server socket lifecycle
 - `ClientHandler`: per-client request handling
 - `ServerContext`: shared distributed state, cart management, stock control, locking
+- `PersistenceManager`: saves the main state file and replicates it to the backup file
 - `ClientApp`: client networking logic
 - `ServerFrame`: server GUI
+- `OrderModeSelector`: lets the user choose dine-in or takeaway mode
 - `ClientFrame`: client GUI
+- `SimulationFrame`: one-click simulation GUI
+- `SimulationService`: simulation GUI scenario runner
+- `ConcurrentOrderingSimulation`: command-line concurrency simulation runner
 
 ## How To Run
 
@@ -232,11 +253,13 @@ This gives a repeatable way to show:
 ## Suggested Demo Flow
 
 1. Start one server and two clients.
-2. Let both clients join the same table.
+2. Choose `Dine In` for both clients and let both clients join the same table.
 3. Add an item from Client A and show that Client B sees the same shared cart update.
 4. Add more items from Client B and show synchronization back to Client A.
-5. Submit the order from one client.
-6. Show that:
+5. Remove an item and show that the shared cart stays synchronized.
+6. Submit the order from one client.
+7. Open the order status panel and show the order moving through `PENDING`, `PREPARING`, `READY`, and `COMPLETED`.
+8. Show that:
    - the cart is cleared for both clients
    - stock is deducted
    - the updated menu is synchronized
@@ -258,8 +281,10 @@ The current version already demonstrates:
 - stock locking
 - duplicate submit prevention
 - stock consistency after order submission
-- takeaway-priority kitchen order scheduling
+- takeaway-priority kitchen order scheduling with dine-in aging
 - order status synchronization
+- dine-in and takeaway client modes
+- checkout flow
 - main file persistence
 - backup file replication
 - independent backup replica server synchronization

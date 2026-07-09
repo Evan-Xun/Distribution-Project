@@ -38,6 +38,7 @@ public class SimulationService {
 
         List<SimulatedCustomer> customers = openCustomers(request.host(), request.port(), request.tableA(), customerCount);
         try {
+            resetTableState(customers, request.tableA(), logger);
             SimulatedCustomer seed = customers.get(0);
             logger.accept("Seeding cart with " + removeCount + " item(s) so removal has valid work...");
             for (int i = 0; i < removeCount; i++) {
@@ -79,6 +80,7 @@ public class SimulationService {
 
         List<SimulatedCustomer> customers = openCustomers(request.host(), request.port(), request.tableA(), customerCount);
         try {
+            resetTableState(customers, request.tableA(), logger);
             SimulatedCustomer seed = customers.get(0);
             logger.accept("Seeding shared cart before concurrent submit...");
             seed.addItem(request.itemId());
@@ -111,6 +113,8 @@ public class SimulationService {
         List<SimulatedCustomer> tableACustomers = openCustomers(request.host(), request.port(), request.tableA(), 1);
         List<SimulatedCustomer> tableBCustomers = openCustomers(request.host(), request.port(), request.tableB(), 1);
         try {
+            resetTableState(tableACustomers, request.tableA(), logger);
+            resetTableState(tableBCustomers, request.tableB(), logger);
             SimulatedCustomer customerA = tableACustomers.get(0);
             SimulatedCustomer customerB = tableBCustomers.get(0);
 
@@ -183,6 +187,26 @@ public class SimulationService {
         for (SimulatedCustomer customer : customers) {
             customer.close();
         }
+    }
+
+    private void resetTableState(List<SimulatedCustomer> customers, int tableNumber, Consumer<String> logger) throws Exception {
+        if (customers.isEmpty()) {
+            return;
+        }
+
+        TableCart existingCart = customers.get(0).latestCart();
+        if (existingCart != null && !existingCart.isEmpty()) {
+            logger.accept("Found existing shared cart state for table " + tableNumber + ". Resetting before simulation...");
+        } else {
+            logger.accept("Resetting table " + tableNumber + " to a clean state before simulation...");
+        }
+
+        customers.get(0).checkoutTable();
+        for (SimulatedCustomer customer : customers) {
+            customer.awaitCartEmpty();
+            customer.clearObservedState();
+        }
+        pause(300);
     }
 
     private void runInParallel(List<Runnable> actions, Consumer<String> logger) throws InterruptedException {
@@ -331,9 +355,25 @@ public class SimulationService {
             send(new Message(MessageType.SUBMIT_ORDER, "Submit order", takeaway));
         }
 
+        private void checkoutTable() throws IOException {
+            send(new Message(MessageType.CHECKOUT_REQUEST, "Reset table before simulation", null));
+        }
+
         private List<MenuItem> awaitMenuSnapshot() throws InterruptedException {
             firstMenuReady.await(3, TimeUnit.SECONDS);
             return latestMenu.get();
+        }
+
+        private void awaitCartEmpty() throws InterruptedException {
+            long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(3);
+            while (System.currentTimeMillis() < deadline) {
+                TableCart cart = latestCart.get();
+                if (cart != null && cart.isEmpty()) {
+                    return;
+                }
+                Thread.sleep(50);
+            }
+            throw new IllegalStateException("Timed out waiting for cart reset");
         }
 
         private void listen() {
@@ -392,6 +432,11 @@ public class SimulationService {
 
         private void recordError(String error) {
             errors.add(error);
+        }
+
+        private void clearObservedState() {
+            observedOrderIds.clear();
+            errors.clear();
         }
 
         private String name() {
