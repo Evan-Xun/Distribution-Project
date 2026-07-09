@@ -5,6 +5,8 @@ import distproject.model.Order;
 import distproject.model.OrderItem;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,18 +17,23 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class PersistenceManager {
+    private static final String REPLICA_HOST = "127.0.0.1";
+    private static final int REPLICA_PORT = 6001;
+
     private final Path dataDirectory = Path.of("data");
     private final Path mainFile = dataDirectory.resolve("main_state.txt");
     private final Path backupFile = dataDirectory.resolve("backup_state.txt");
 
     public synchronized void saveState(List<Order> orders, List<MenuItem> menuItems, Consumer<String> logConsumer) {
         try {
+            String snapshot = buildSnapshot(orders, menuItems);
             Files.createDirectories(dataDirectory);
-            Files.writeString(mainFile, buildSnapshot(orders, menuItems), StandardCharsets.UTF_8);
+            Files.writeString(mainFile, snapshot, StandardCharsets.UTF_8);
             logConsumer.accept("Main file saved: " + mainFile.toAbsolutePath());
 
             Files.copy(mainFile, backupFile, StandardCopyOption.REPLACE_EXISTING);
             logConsumer.accept("Replication completed: backup file updated at " + backupFile.toAbsolutePath());
+            replicateToBackupServer(snapshot, logConsumer);
         } catch (IOException exception) {
             logConsumer.accept("Persistence/replication failed: " + exception.getMessage());
         }
@@ -44,6 +51,19 @@ public class PersistenceManager {
             logConsumer.accept("Restore completed: backup file copied to main file.");
         } catch (IOException exception) {
             logConsumer.accept("Restore failed: " + exception.getMessage());
+        }
+    }
+
+    private void replicateToBackupServer(String snapshot, Consumer<String> logConsumer) {
+        try (Socket socket = new Socket(REPLICA_HOST, REPLICA_PORT);
+             OutputStreamWriter writer = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)) {
+            writer.write(snapshot);
+            writer.flush();
+            socket.shutdownOutput();
+            logConsumer.accept("Distributed replica server synchronized at " + REPLICA_HOST + ":" + REPLICA_PORT);
+        } catch (IOException exception) {
+            logConsumer.accept("Distributed replica server unavailable at " + REPLICA_HOST + ":" + REPLICA_PORT
+                    + " (" + exception.getMessage() + ")");
         }
     }
 

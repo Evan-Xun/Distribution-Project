@@ -81,14 +81,16 @@ This demonstrates priority scheduling in a distributed small-business workflow.
 
 This demonstrates synchronization of distributed order state after submission.
 
-### 7. Main file persistence and backup replication
+### 7. Main file persistence and distributed backup replication
 
 - Orders and menu stock are saved to `data/main_state.txt`.
 - The main state file is copied to `data/backup_state.txt` after each important update.
-- The server log reports main file saving and backup replication events.
+- The primary server also sends the same state snapshot to an independent backup replica server on port `6001`.
+- The backup replica server stores the received snapshot in `data/replica-server/replica_state.txt`.
+- The server log reports main file saving, local backup replication, and distributed replica synchronization events.
 - The server GUI includes a restore action that copies the backup file back to the main file.
 
-This demonstrates data persistence and a simple backup replication mechanism.
+This demonstrates both local backup replication and socket-based distributed replica synchronization.
 
 ## Implemented Distributed Mechanisms
 
@@ -138,6 +140,7 @@ The system currently demonstrates three locking-related mechanisms:
 
 - The server writes order and stock state to a main file.
 - The server then replicates the same state to a backup file.
+- The server also sends the state snapshot to a separate backup replica server over a socket connection.
 - The backup file can be copied back to the main file from the server GUI.
 
 ## Validation Rules Already Implemented
@@ -194,14 +197,12 @@ The system currently demonstrates three locking-related mechanisms:
 ## How To Run
 
 1. Open the project in IntelliJ IDEA.
-2. Make sure `lib/flatlaf-3.4.jar` is included on the classpath.
-3. Run `Main` to open the launcher, then choose Server, Client, or Simulation.
-4. Alternatively, run `ServerLauncher`, `ClientLauncher`, or `SimulationLauncher` directly.
-5. Start the server and use the default port `5001`.
-6. Run one or more client windows.
-7. Choose `Dine In` to test shared carts by table, or choose `Takeaway` to test takeaway priority scheduling.
-8. Use the same table number on multiple dine-in clients to test shared-cart synchronization.
-9. Run `SimulationLauncher` to open the simulation GUI for concurrency-conflict demos.
+2. Run `ReplicaServerLauncher` and start the replica server on port `6001`.
+3. Run `ServerLauncher`.
+4. Run one or more `ClientLauncher` instances.
+5. Connect clients to the server using the default port `5001`.
+6. Use the same table number on multiple clients to test shared-cart synchronization.
+6. Run `SimulationLauncher` to open the simulation GUI for concurrency-conflict demos.
 
 ## Simulation GUI
 
@@ -263,11 +264,11 @@ This gives a repeatable way to show:
    - stock is deducted
    - the updated menu is synchronized
    - duplicate submission is prevented
-9. Open a takeaway client, submit a takeaway order, and compare it with a dine-in order in the kitchen queue.
-10. Show that takeaway starts with higher priority while dine-in orders can gain priority through waiting time.
-11. Use checkout to clear submitted-order billing for a table or takeaway customer.
-12. Open the runtime data folder and show that the main file and backup file are generated.
-13. Use the server restore action to demonstrate backup recovery.
+7. Submit one dine-in order and one takeaway order, then watch the takeaway order receive priority in the kitchen queue.
+8. Show the client receiving `PENDING`, `PREPARING`, `READY`, and `COMPLETED` status updates.
+9. Open the runtime data folder and show that the main file and backup file are generated.
+10. Show the backup replica server receiving the latest replicated snapshot.
+11. Use the server restore action to demonstrate backup recovery.
 
 ## Current Scope
 
@@ -286,5 +287,6 @@ The current version already demonstrates:
 - checkout flow
 - main file persistence
 - backup file replication
+- independent backup replica server synchronization
 
 This provides a solid foundation for the final report and presentation demo.
